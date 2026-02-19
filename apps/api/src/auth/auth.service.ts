@@ -1,0 +1,268 @@
+import {
+  BadRequestException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { User } from '@prisma/client';
+import * as bcrypt from 'bcryptjs';
+import { randomUUID } from 'crypto';
+import { PrismaService } from '../prisma/prisma.service';
+import { LoginDto } from './dto/login.dto';
+import { RegisterDto } from './dto/register.dto';
+import { AuthTokens, RefreshPayload } from './auth.types';
+
+@Injectable()
+export class AuthService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly jwtService: JwtService,
+  ) {}
+
+  async register(dto: RegisterDto, userAgent?: string, ipAddress?: string) {
+    const email = dto.email.trim().toLowerCase();
+    const existing = await this.prisma.user.findUnique({ where: { email } });
+
+    if (existing) {
+      throw new BadRequestException('Email is already in use');
+    }
+
+    const passwordHash = await bcrypt.hash(dto.password, 12);
+
+    const user = await this.prisma.user.create({
+      data: {
+        email,
+        passwordHash,
+      },
+    });
+
+    const tokens = await this.createSessionAndTokens(
+      user,
+      userAgent,
+      ipAddress,
+    );
+
+    return {
+      user: this.toPublicUser(user),
+      ...tokens,
+    };
+  }
+
+  async login(dto: LoginDto, userAgent?: string, ipAddress?: string) {
+    const email = dto.email.trim().toLowerCase();
+    const user = await this.prisma.user.findUnique({ where: { email } });
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const passwordMatch = await bcrypt.compare(dto.password, user.passwordHash);
+    if (!passwordMatch) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const tokens = await this.createSessionAndTokens(
+      user,
+      userAgent,
+      ipAddress,
+    );
+
+    return {
+      user: this.toPublicUser(user),
+      ...tokens,
+    };
+  }
+
+  async refresh(refreshToken: string, userAgent?: string, ipAddress?: string) {
+    const payload = await this.verifyRefreshToken(refreshToken);
+
+    const session = await this.prisma.session.findUnique({
+      where: { id: payload.sid },
+    });
+
+    if (!session || session.userId !== payload.sub) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    if (session.revokedAt) {
+      throw new UnauthorizedException('Session revoked');
+    }
+
+    if (session.expiresAt.getTime() <= Date.now()) {
+      throw new UnauthorizedException('Session expired');
+    }
+
+    const tokenMatch = await bcrypt.compare(
+      refreshToken,
+      session.refreshTokenHash,
+    );
+    if (!tokenMatch) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: session.userId },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    await this.prisma.session.update({
+      where: { id: session.id },
+      data: { revokedAt: new Date() },
+    });
+
+    const tokens = await this.createSessionAndTokens(
+      user,
+      userAgent,
+      ipAddress,
+    );
+
+    return {
+      user: this.toPublicUser(user),
+      ...tokens,
+    };
+  }
+
+  async logout(refreshToken: string) {
+    const payload = await this.verifyRefreshToken(refreshToken, true);
+
+    await this.prisma.session.updateMany({
+      where: {
+        id: payload.sid,
+        userId: payload.sub,
+        revokedAt: null,
+      },
+      data: { revokedAt: new Date() },
+    });
+
+    return { success: true };
+  }
+
+  private async createSessionAndTokens(
+    user: User,
+    userAgent?: string,
+    ipAddress?: string,
+  ): Promise<AuthTokens> {
+    const sessionId = randomUUID();
+
+    const accessToken = await this.jwtService.signAsync(
+      {
+        sub: user.id,
+        email: user.email,
+        type: 'access',
+      },
+      {
+        secret: this.getAccessSecret(),
+        expiresIn: this.getAccessTtl(),
+      },
+    );
+
+    const refreshToken = await this.jwtService.signAsync(
+      {
+        sub: user.id,
+        sid: sessionId,
+        type: 'refresh',
+      },
+      {
+        secret: this.getRefreshSecret(),
+        expiresIn: this.getRefreshTtl(),
+      },
+    );
+
+    const refreshPayload = await this.verifyRefreshToken(refreshToken);
+    const refreshTokenHash = await bcrypt.hash(refreshToken, 12);
+
+    await this.prisma.session.create({
+      data: {
+        id: sessionId,
+        userId: user.id,
+        refreshTokenHash,
+        userAgent,
+        ipAddress,
+        expiresAt: new Date(refreshPayload.exp * 1000),
+      },
+    });
+
+    return {
+      accessToken,
+      refreshToken,
+    };
+  }
+
+  private async verifyRefreshToken(
+    refreshToken: string,
+    ignoreExpiration = false,
+  ): Promise<RefreshPayload> {
+    try {
+      const payload = await this.jwtService.verifyAsync<RefreshPayload>(
+        refreshToken,
+        {
+          secret: this.getRefreshSecret(),
+          ignoreExpiration,
+        },
+      );
+
+      if (payload.type !== 'refresh' || !payload.sid || !payload.sub) {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+
+      return payload;
+    } catch {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+  }
+
+  private toPublicUser(user: User) {
+    return {
+      id: user.id,
+      email: user.email,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
+  }
+
+  private getAccessSecret() {
+    return process.env.JWT_ACCESS_SECRET || 'dev-access-secret';
+  }
+
+  private getRefreshSecret() {
+    return process.env.JWT_REFRESH_SECRET || 'dev-refresh-secret';
+  }
+
+  private getAccessTtl() {
+    return this.parseTtlToSeconds(process.env.JWT_ACCESS_TTL, '15m');
+  }
+
+  private getRefreshTtl() {
+    return this.parseTtlToSeconds(process.env.JWT_REFRESH_TTL, '30d');
+  }
+
+  private parseTtlToSeconds(
+    value: string | undefined,
+    fallback: string,
+  ): number {
+    const raw = (value || fallback).trim().toLowerCase();
+    const numeric = Number(raw);
+
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return Math.floor(numeric);
+    }
+
+    const match = raw.match(/^(\d+)([smhd])$/);
+    if (!match) {
+      throw new Error(
+        `Invalid JWT TTL format: "${raw}". Use number of seconds or suffix s/m/h/d.`,
+      );
+    }
+
+    const amount = Number(match[1]);
+    const unit = match[2];
+
+    if (unit === 's') return amount;
+    if (unit === 'm') return amount * 60;
+    if (unit === 'h') return amount * 60 * 60;
+    return amount * 60 * 60 * 24;
+  }
+}
