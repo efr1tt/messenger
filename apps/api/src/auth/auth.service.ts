@@ -11,6 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { AuthTokens, RefreshPayload } from './auth.types';
+import { getAccessSecret, getRefreshSecret } from './jwt.config';
 
 @Injectable()
 export class AuthService {
@@ -224,11 +225,11 @@ export class AuthService {
   }
 
   private getAccessSecret() {
-    return process.env.JWT_ACCESS_SECRET || 'dev-access-secret';
+    return getAccessSecret();
   }
 
   private getRefreshSecret() {
-    return process.env.JWT_REFRESH_SECRET || 'dev-refresh-secret';
+    return getRefreshSecret();
   }
 
   private getAccessTtl() {
