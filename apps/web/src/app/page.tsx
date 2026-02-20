@@ -1,65 +1,142 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+'use client';
+
+import { FormEvent, useMemo, useState } from 'react';
+import styles from './page.module.css';
+
+type AuthMode = 'register' | 'login';
+
+type AuthResponse = {
+  user: {
+    id: string;
+    email: string;
+    createdAt: string;
+    updatedAt: string;
+  };
+  accessToken: string;
+  refreshToken: string;
+};
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:3001';
 
 export default function Home() {
+  const [mode, setMode] = useState<AuthMode>('register');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<AuthResponse | null>(null);
+
+  const submitLabel = useMemo(
+    () => (mode === 'register' ? 'Create Account' : 'Sign In'),
+    [mode],
+  );
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`${API_BASE}/auth/${mode}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        const message = data?.message;
+        throw new Error(Array.isArray(message) ? message.join(', ') : (message || 'Auth failed'));
+      }
+
+      localStorage.setItem('accessToken', data.accessToken);
+      localStorage.setItem('refreshToken', data.refreshToken);
+      localStorage.setItem('user', JSON.stringify(data.user));
+
+      setResult(data);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      setError(message);
+      setResult(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>To get started, edit the page.tsx file.</h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
+      <main className={styles.panel}>
+        <div className={styles.heading}>
+          <p className={styles.badge}>Messenger MVP</p>
+          <h1>Email Authentication</h1>
+          <p className={styles.subtitle}>
+            Start with email + password registration. You can add SMS login later when it is worth the cost.
           </p>
         </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+
+        <div className={styles.switcher}>
+          <button
+            type="button"
+            className={mode === 'register' ? styles.switcherActive : styles.switcherBtn}
+            onClick={() => setMode('register')}
           >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            Register
+          </button>
+          <button
+            type="button"
+            className={mode === 'login' ? styles.switcherActive : styles.switcherBtn}
+            onClick={() => setMode('login')}
           >
-            Documentation
-          </a>
+            Login
+          </button>
         </div>
+
+        <form className={styles.form} onSubmit={onSubmit}>
+          <label className={styles.label}>
+            Email
+            <input
+              className={styles.input}
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+            />
+          </label>
+
+          <label className={styles.label}>
+            Password
+            <input
+              className={styles.input}
+              type="password"
+              placeholder="Minimum 8 chars"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              minLength={8}
+              required
+            />
+          </label>
+
+          <button className={styles.submit} type="submit" disabled={loading}>
+            {loading ? 'Please wait...' : submitLabel}
+          </button>
+        </form>
+
+        {error ? <p className={styles.error}>{error}</p> : null}
+
+        {result ? (
+          <section className={styles.success}>
+            <h2>Success</h2>
+            <p>Signed in as {result.user.email}</p>
+            <p>Tokens are saved to localStorage.</p>
+          </section>
+        ) : null}
       </main>
     </div>
   );
