@@ -5,10 +5,14 @@ import {
 } from '@nestjs/common';
 import { FriendRequestStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 
 @Injectable()
 export class FriendsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redisService: RedisService,
+  ) {}
 
   async requestFriend(currentUserId: string, toUserId: string) {
     if (currentUserId === toUserId) {
@@ -117,7 +121,7 @@ export class FriendsService {
   }
 
   async getFriends(currentUserId: string) {
-    return this.prisma.friendship.findMany({
+    const items = await this.prisma.friendship.findMany({
       where: { userId: currentUserId },
       select: {
         id: true,
@@ -134,6 +138,20 @@ export class FriendsService {
         createdAt: 'desc',
       },
     });
+
+    const onlineStatuses = await Promise.all(
+      items.map(async (item) => {
+        const isOnline = await this.redisService.isUserOnline(item.friend.id);
+        return [item.friend.id, isOnline] as const;
+      }),
+    );
+
+    const onlineMap = new Map(onlineStatuses);
+
+    return items.map((item) => ({
+      ...item,
+      isOnline: onlineMap.get(item.friend.id) || false,
+    }));
   }
 
   async getIncomingRequests(currentUserId: string) {

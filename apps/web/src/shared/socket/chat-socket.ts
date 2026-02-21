@@ -13,6 +13,10 @@ export type MessageNewEvent = {
   };
 };
 
+export type PresenceEvent = {
+  userId: string;
+};
+
 export function createChatSocket(accessToken: string): Socket {
   return io(API_BASE, {
     transports: ['websocket'],

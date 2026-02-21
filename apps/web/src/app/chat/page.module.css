@@ -93,6 +93,29 @@
   flex-direction: column;
 }
 
+.friendRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.presenceDotOnline,
+.presenceDotOffline {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.presenceDotOnline {
+  background: #12b76a;
+  box-shadow: 0 0 0 2px rgba(18, 183, 106, 0.16);
+}
+
+.presenceDotOffline {
+  background: #98a2b3;
+}
+
 .actions {
   display: flex;
   gap: 8px;

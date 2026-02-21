@@ -3,6 +3,7 @@ import { client } from '@/shared/api/client';
 export type FriendItem = {
   id: string;
   createdAt: string;
+  isOnline: boolean;
   friend: {
     id: string;
     email: string;

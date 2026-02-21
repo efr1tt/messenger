@@ -3,6 +3,7 @@
 import {
   acceptFriendRequest,
   declineFriendRequest,
+  FriendItem,
   getFriends,
   getIncomingRequests,
   sendFriendRequest,
@@ -26,7 +27,11 @@ import {
 } from '@/entities/session/model/storage';
 import { AuthUser } from '@/entities/session/model/types';
 import { getMe, searchUsers } from '@/entities/user/api/users';
-import { createChatSocket, MessageNewEvent } from '@/shared/socket/chat-socket';
+import {
+  createChatSocket,
+  MessageNewEvent,
+  PresenceEvent,
+} from '@/shared/socket/chat-socket';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
 import { useRouter } from 'next/navigation';
@@ -197,10 +202,32 @@ export default function ChatPage() {
       }
     };
 
+    const onPresenceOnline = ({ userId }: PresenceEvent) => {
+      queryClient.setQueryData<FriendItem[]>(queryKeys.friends, (oldData) => {
+        if (!oldData) return oldData;
+        return oldData.map((item) =>
+          item.friend.id === userId ? { ...item, isOnline: true } : item,
+        );
+      });
+    };
+
+    const onPresenceOffline = ({ userId }: PresenceEvent) => {
+      queryClient.setQueryData<FriendItem[]>(queryKeys.friends, (oldData) => {
+        if (!oldData) return oldData;
+        return oldData.map((item) =>
+          item.friend.id === userId ? { ...item, isOnline: false } : item,
+        );
+      });
+    };
+
     socket.on('message:new', onMessageNew);
+    socket.on('presence:online', onPresenceOnline);
+    socket.on('presence:offline', onPresenceOffline);
 
     return () => {
       socket.off('message:new', onMessageNew);
+      socket.off('presence:online', onPresenceOnline);
+      socket.off('presence:offline', onPresenceOffline);
       socket.disconnect();
     };
   }, [mounted, hasToken, queryClient]);
@@ -412,7 +439,12 @@ export default function ChatPage() {
             {friendsQuery.isError ? <p className={styles.statusError}>Failed to load friends</p> : null}
             {friendsQuery.data?.map((item) => (
               <div key={item.id} className={styles.listItem}>
-                <span>{item.friend.email}</span>
+                <span className={styles.friendRow}>
+                  <span
+                    className={item.isOnline ? styles.presenceDotOnline : styles.presenceDotOffline}
+                  />
+                  {item.friend.email}
+                </span>
                 <button onClick={() => onOpenDirect(item.friend.id)}>Chat</button>
               </div>
             ))}
