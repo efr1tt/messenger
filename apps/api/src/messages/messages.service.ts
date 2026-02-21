@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ChatGateway } from '../chat/chat.gateway';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConversationsService } from '../conversations/conversations.service';
 
@@ -11,6 +12,7 @@ export class MessagesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly conversationsService: ConversationsService,
+    private readonly chatGateway: ChatGateway,
   ) {}
 
   async send(currentUserId: string, conversationId: string, text: string) {
@@ -58,7 +60,7 @@ export class MessagesService {
       }
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const message = await this.prisma.$transaction(async (tx) => {
       const message = await tx.message.create({
         data: {
           conversationId,
@@ -81,5 +83,18 @@ export class MessagesService {
 
       return message;
     });
+
+    const recipientUserIds = conversation.members
+      .map((member) => member.userId)
+      .filter((userId) => userId !== currentUserId);
+
+    if (recipientUserIds.length > 0) {
+      this.chatGateway.emitMessageNew(recipientUserIds, {
+        conversationId,
+        message,
+      });
+    }
+
+    return message;
   }
 }

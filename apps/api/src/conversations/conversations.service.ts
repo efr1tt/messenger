@@ -60,7 +60,11 @@ export class ConversationsService {
     });
 
     if (existing) {
-      return existing;
+      return {
+        ...existing,
+        members: existing.members.map((m) => m.user),
+        unreadCount: 0,
+      };
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -76,15 +80,17 @@ export class ConversationsService {
           {
             conversationId: conversation.id,
             userId: currentUserId,
+            lastReadAt: new Date(),
           },
           {
             conversationId: conversation.id,
             userId: targetUserId,
+            lastReadAt: new Date(),
           },
         ],
       });
 
-      return tx.conversation.findUniqueOrThrow({
+      const created = await tx.conversation.findUniqueOrThrow({
         where: { id: conversation.id },
         select: {
           id: true,
@@ -103,6 +109,12 @@ export class ConversationsService {
           },
         },
       });
+
+      return {
+        ...created,
+        members: created.members.map((m) => m.user),
+        unreadCount: 0,
+      };
     });
   }
 
@@ -110,6 +122,7 @@ export class ConversationsService {
     const memberships = await this.prisma.conversationMember.findMany({
       where: { userId: currentUserId },
       select: {
+        lastReadAt: true,
         conversation: {
           select: {
             id: true,
@@ -129,6 +142,7 @@ export class ConversationsService {
             messages: {
               select: {
                 id: true,
+                conversationId: true,
                 text: true,
                 senderId: true,
                 createdAt: true,
@@ -146,6 +160,24 @@ export class ConversationsService {
       },
     });
 
+    const unreadCounts = await Promise.all(
+      memberships.map(async (membership) => {
+        const unreadCount = await this.prisma.message.count({
+          where: {
+            conversationId: membership.conversation.id,
+            senderId: { not: currentUserId },
+            ...(membership.lastReadAt
+              ? { createdAt: { gt: membership.lastReadAt } }
+              : {}),
+          },
+        });
+
+        return [membership.conversation.id, unreadCount] as const;
+      }),
+    );
+
+    const unreadByConversationId = new Map(unreadCounts);
+
     return memberships.map((membership) => {
       const { conversation } = membership;
       const [lastMessage] = conversation.messages;
@@ -157,6 +189,7 @@ export class ConversationsService {
         updatedAt: conversation.updatedAt,
         members: conversation.members.map((m) => m.user),
         lastMessage: lastMessage || null,
+        unreadCount: unreadByConversationId.get(conversation.id) || 0,
       };
     });
   }
@@ -175,6 +208,7 @@ export class ConversationsService {
       where: { conversationId },
       select: {
         id: true,
+        conversationId: true,
         text: true,
         senderId: true,
         createdAt: true,
@@ -194,6 +228,27 @@ export class ConversationsService {
     return {
       items: messages.reverse(),
       nextCursor,
+    };
+  }
+
+  async markRead(currentUserId: string, conversationId: string) {
+    await this.ensureMembership(currentUserId, conversationId);
+
+    await this.prisma.conversationMember.update({
+      where: {
+        conversationId_userId: {
+          conversationId,
+          userId: currentUserId,
+        },
+      },
+      data: {
+        lastReadAt: new Date(),
+      },
+    });
+
+    return {
+      success: true,
+      conversationId,
     };
   }
 

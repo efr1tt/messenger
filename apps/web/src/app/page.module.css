@@ -7,7 +7,7 @@
     radial-gradient(circle at 20% 20%, #f6f2e8 0%, transparent 40%),
     radial-gradient(circle at 80% 0%, #d9efe7 0%, transparent 45%),
     #f7f8fc;
-  font-family: var(--font-geist-sans), sans-serif;
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
 }
 
 .panel {

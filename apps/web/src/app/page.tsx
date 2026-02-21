@@ -1,30 +1,32 @@
 'use client';
 
-import { FormEvent, useMemo, useState } from 'react';
+import { login, register } from '@/entities/session/api/auth';
+import {
+  getAccessToken,
+  saveSession,
+} from '@/entities/session/model/storage';
+import { AxiosError } from 'axios';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import styles from './page.module.css';
 
 type AuthMode = 'register' | 'login';
 
-type AuthResponse = {
-  user: {
-    id: string;
-    email: string;
-    createdAt: string;
-    updatedAt: string;
-  };
-  accessToken: string;
-  refreshToken: string;
-};
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:3001';
-
 export default function Home() {
+  const router = useRouter();
   const [mode, setMode] = useState<AuthMode>('register');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<AuthResponse | null>(null);
+  const [successEmail, setSuccessEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    const token = getAccessToken();
+    if (token) {
+      router.replace('/chat');
+    }
+  }, [router]);
 
   const submitLabel = useMemo(
     () => (mode === 'register' ? 'Create Account' : 'Sign In'),
@@ -37,33 +39,25 @@ export default function Home() {
     setError(null);
 
     try {
-      const response = await fetch(`${API_BASE}/auth/${mode}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email,
-          password,
-        }),
-      });
+      const payload = { email, password };
+      const data = mode === 'register' ? await register(payload) : await login(payload);
 
-      const data = await response.json();
+      saveSession(data);
+      setSuccessEmail(data.user.email);
+      router.push('/chat');
+    } catch (err) {
+      const fallback = 'Authentication failed';
 
-      if (!response.ok) {
-        const message = data?.message;
-        throw new Error(Array.isArray(message) ? message.join(', ') : (message || 'Auth failed'));
+      if (err instanceof AxiosError) {
+        const apiError = err as AxiosError<{ message?: string | string[] }>;
+        const message = apiError.response?.data?.message;
+        const parsedMessage = Array.isArray(message) ? message.join(', ') : message;
+        setError(parsedMessage || fallback);
+      } else {
+        setError(fallback);
       }
 
-      localStorage.setItem('accessToken', data.accessToken);
-      localStorage.setItem('refreshToken', data.refreshToken);
-      localStorage.setItem('user', JSON.stringify(data.user));
-
-      setResult(data);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      setError(message);
-      setResult(null);
+      setSuccessEmail(null);
     } finally {
       setLoading(false);
     }
@@ -76,7 +70,7 @@ export default function Home() {
           <p className={styles.badge}>Messenger MVP</p>
           <h1>Email Authentication</h1>
           <p className={styles.subtitle}>
-            Start with email + password registration. You can add SMS login later when it is worth the cost.
+            Start with email + password registration. SMS login can be added later.
           </p>
         </div>
 
@@ -130,11 +124,11 @@ export default function Home() {
 
         {error ? <p className={styles.error}>{error}</p> : null}
 
-        {result ? (
+        {successEmail ? (
           <section className={styles.success}>
             <h2>Success</h2>
-            <p>Signed in as {result.user.email}</p>
-            <p>Tokens are saved to localStorage.</p>
+            <p>Signed in as {successEmail}</p>
+            <p>Redirecting to chat...</p>
           </section>
         ) : null}
       </main>

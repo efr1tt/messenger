@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Param,
   ParseIntPipe,
   Post,
@@ -44,5 +45,14 @@ export class ConversationsController {
       cursor,
       limit,
     );
+  }
+
+  @Post(':id/read')
+  @HttpCode(200)
+  markRead(
+    @CurrentUserId() currentUserId: string,
+    @Param('id') conversationId: string,
+  ) {
+    return this.conversationsService.markRead(currentUserId, conversationId);
   }
 }
