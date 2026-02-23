@@ -166,6 +166,92 @@
   gap: 10px;
 }
 
+.chatHeaderTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.callControls {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.callBtn,
+.callEndBtn {
+  border: 0;
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: #fff;
+  cursor: pointer;
+}
+
+.callBtn {
+  background: #1f7a56;
+}
+
+.callEndBtn {
+  background: #b42318;
+}
+
+.callBtn:disabled,
+.callEndBtn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.callState {
+  font-size: 13px;
+  color: #1d2939;
+}
+
+.callDebug {
+  font-size: 12px;
+  color: #667085;
+}
+
+.callPanel {
+  display: grid;
+  gap: 8px;
+}
+
+.meters {
+  display: grid;
+  gap: 6px;
+}
+
+.meterItem {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: #475467;
+}
+
+.meterTrack {
+  width: 180px;
+  max-width: 100%;
+  height: 8px;
+  background: #d0d5dd;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.meterFill,
+.meterFillPeer {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 80ms linear;
+}
+
+.meterFill {
+  background: #1f7a56;
+}
+
+.meterFillPeer {
+  background: #193d7d;
+}
+
 .conversationsRow {
   display: flex;
   gap: 8px;
@@ -230,6 +316,34 @@
 .error {
   color: #b42318;
   font-size: 13px;
+}
+
+.callModalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(16, 24, 40, 0.55);
+  display: grid;
+  place-items: center;
+  z-index: 20;
+}
+
+.callModal {
+  width: min(420px, calc(100% - 32px));
+  background: #fff;
+  border: 1px solid #d0d5dd;
+  border-radius: 14px;
+  padding: 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.callModal h3 {
+  font-size: 18px;
+}
+
+.callModalActions {
+  display: flex;
+  gap: 8px;
 }
 
 @media (max-width: 980px) {

@@ -28,6 +28,10 @@ import {
 import { AuthUser } from '@/entities/session/model/types';
 import { getMe, searchUsers } from '@/entities/user/api/users';
 import {
+  CallAnswerEvent,
+  CallEndEvent,
+  CallIceEvent,
+  CallOfferEvent,
   createChatSocket,
   MessageNewEvent,
   PresenceEvent,
@@ -36,6 +40,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { Socket } from 'socket.io-client';
 import styles from './page.module.css';
 
 const queryKeys = {
@@ -47,11 +52,38 @@ const queryKeys = {
   userSearch: (term: string) => ['userSearch', term] as const,
 };
 
+const RTC_CONFIG: RTCConfiguration = {
+  iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+};
+
+type IncomingCall = {
+  fromUserId: string;
+  conversationId: string;
+  offer: RTCSessionDescriptionInit;
+};
+
+type CallState = 'idle' | 'calling' | 'ringing' | 'connecting' | 'in_call';
+type PendingIceCandidate = {
+  conversationId: string;
+  candidate: RTCIceCandidateInit;
+};
+
 export default function ChatPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const messageInputRef = useRef<HTMLInputElement | null>(null);
   const selectedConversationRef = useRef<string | null>(null);
+  const socketRef = useRef<Socket | null>(null);
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  const callConversationRef = useRef<string | null>(null);
+  const callPeerUserRef = useRef<string | null>(null);
+  const pendingIceCandidatesRef = useRef<PendingIceCandidate[]>([]);
+  const localMeterCleanupRef = useRef<(() => void) | null>(null);
+  const remoteMeterCleanupRef = useRef<(() => void) | null>(null);
+  const callStateRef = useRef<CallState>('idle');
 
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -60,6 +92,19 @@ export default function ChatPage() {
   const [mounted, setMounted] = useState(false);
   const [hasToken, setHasToken] = useState<boolean | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const [callState, setCallState] = useState<CallState>('idle');
+  const [isMuted, setIsMuted] = useState(false);
+  const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
+  const [callPeerUserId, setCallPeerUserId] = useState<string | null>(null);
+  const [callConversationId, setCallConversationId] = useState<string | null>(null);
+  const [localVoiceLevel, setLocalVoiceLevel] = useState(0);
+  const [remoteVoiceLevel, setRemoteVoiceLevel] = useState(0);
+  const [peerConnectionState, setPeerConnectionState] = useState<RTCPeerConnectionState>('new');
+  const [iceConnectionState, setIceConnectionState] = useState<RTCIceConnectionState>('new');
+
+  useEffect(() => {
+    callStateRef.current = callState;
+  }, [callState]);
 
   useEffect(() => {
     setMounted(true);
@@ -138,6 +183,7 @@ export default function ChatPage() {
     }
 
     const socket = createChatSocket(accessToken);
+    socketRef.current = socket;
 
     const onMessageNew = (payload: MessageNewEvent) => {
       const incomingMessage: ConversationMessage = {
@@ -220,15 +266,80 @@ export default function ChatPage() {
       });
     };
 
+    const onCallOffer = ({ fromUserId, conversationId, offer }: CallOfferEvent) => {
+      if (callStateRef.current !== 'idle') {
+        socket.emit('call:reject', {
+          toUserId: fromUserId,
+          conversationId,
+        });
+        return;
+      }
+      setIncomingCall({ fromUserId, conversationId, offer });
+      setCallState('ringing');
+    };
+
+    const onCallAnswer = async ({ fromUserId, conversationId, answer }: CallAnswerEvent) => {
+      if (
+        !peerConnectionRef.current ||
+        !callConversationRef.current ||
+        conversationId !== callConversationRef.current
+      ) {
+        return;
+      }
+
+      await peerConnectionRef.current.setRemoteDescription(
+        new RTCSessionDescription(answer),
+      );
+      await flushPendingIceCandidates(conversationId);
+      setCallPeerUserId(fromUserId);
+      setCallState('in_call');
+    };
+
+    const onCallIce = async ({ conversationId, candidate }: CallIceEvent) => {
+      const isCurrentConversation =
+        callConversationRef.current && conversationId === callConversationRef.current;
+
+      // Candidate may arrive before accept()/before peer is created.
+      if (!peerConnectionRef.current || !isCurrentConversation) {
+        pendingIceCandidatesRef.current.push({ conversationId, candidate });
+        return;
+      }
+
+      if (!peerConnectionRef.current.remoteDescription) {
+        pendingIceCandidatesRef.current.push({ conversationId, candidate });
+        return;
+      }
+
+      await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+    };
+
+    const onCallEnd = ({ conversationId }: CallEndEvent) => {
+      if (callConversationRef.current && conversationId !== callConversationRef.current) {
+        return;
+      }
+      cleanupCallState();
+    };
+
     socket.on('message:new', onMessageNew);
     socket.on('presence:online', onPresenceOnline);
     socket.on('presence:offline', onPresenceOffline);
+    socket.on('call:offer', onCallOffer);
+    socket.on('call:answer', onCallAnswer);
+    socket.on('call:ice', onCallIce);
+    socket.on('call:end', onCallEnd);
+    socket.on('call:reject', onCallEnd);
 
     return () => {
       socket.off('message:new', onMessageNew);
       socket.off('presence:online', onPresenceOnline);
       socket.off('presence:offline', onPresenceOffline);
+      socket.off('call:offer', onCallOffer);
+      socket.off('call:answer', onCallAnswer);
+      socket.off('call:ice', onCallIce);
+      socket.off('call:end', onCallEnd);
+      socket.off('call:reject', onCallEnd);
       socket.disconnect();
+      socketRef.current = null;
     };
   }, [mounted, hasToken, queryClient]);
 
@@ -312,6 +423,14 @@ export default function ChatPage() {
     [conversationsQuery.data, selectedConversationId],
   );
 
+  const activePeer = useMemo(() => {
+    if (!activeConversation || !currentUser) {
+      return null;
+    }
+
+    return activeConversation.members.find((member) => member.id !== currentUser.id) || null;
+  }, [activeConversation, currentUser]);
+
   useEffect(() => {
     if (!selectedConversationId || hasToken !== true) {
       return;
@@ -319,6 +438,20 @@ export default function ChatPage() {
 
     markReadMutation.mutate(selectedConversationId);
   }, [selectedConversationId, hasToken]);
+
+  useEffect(() => {
+    return () => {
+      cleanupCallState();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!remoteAudioRef.current || !remoteStreamRef.current) {
+      return;
+    }
+
+    remoteAudioRef.current.srcObject = remoteStreamRef.current;
+  }, [callState]);
 
   if (!mounted || hasToken === null || meQuery.isLoading) {
     return (
@@ -330,6 +463,275 @@ export default function ChatPage() {
 
   if (hasToken === false) {
     return null;
+  }
+
+  function cleanupCallState() {
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
+    }
+
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => track.stop());
+      localStreamRef.current = null;
+    }
+
+    if (localMeterCleanupRef.current) {
+      localMeterCleanupRef.current();
+      localMeterCleanupRef.current = null;
+    }
+
+    if (remoteMeterCleanupRef.current) {
+      remoteMeterCleanupRef.current();
+      remoteMeterCleanupRef.current = null;
+    }
+
+    remoteStreamRef.current = null;
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.srcObject = null;
+    }
+
+    setIncomingCall(null);
+    setCallPeerUserId(null);
+    setCallConversationId(null);
+    callPeerUserRef.current = null;
+    callConversationRef.current = null;
+    pendingIceCandidatesRef.current = [];
+    setCallState('idle');
+    setIsMuted(false);
+    setLocalVoiceLevel(0);
+    setRemoteVoiceLevel(0);
+    setPeerConnectionState('new');
+    setIceConnectionState('new');
+  }
+
+  function startVoiceMeter(stream: MediaStream, onLevel: (value: number) => void) {
+    const audioContext = new AudioContext();
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 2048;
+
+    const source = audioContext.createMediaStreamSource(stream);
+    source.connect(analyser);
+
+    const data = new Uint8Array(analyser.fftSize);
+    let rafId = 0;
+
+    const tick = () => {
+      analyser.getByteTimeDomainData(data);
+      let sum = 0;
+      for (let i = 0; i < data.length; i += 1) {
+        const normalized = (data[i] - 128) / 128;
+        sum += normalized * normalized;
+      }
+
+      const rms = Math.sqrt(sum / data.length);
+      onLevel(Math.min(100, Math.round(rms * 250)));
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      source.disconnect();
+      analyser.disconnect();
+      audioContext.close();
+      onLevel(0);
+    };
+  }
+
+  async function flushPendingIceCandidates(conversationId: string) {
+    if (!peerConnectionRef.current) {
+      return;
+    }
+
+    const pendingForConversation = pendingIceCandidatesRef.current.filter(
+      (item) => item.conversationId === conversationId,
+    );
+    pendingIceCandidatesRef.current = pendingIceCandidatesRef.current.filter(
+      (item) => item.conversationId !== conversationId,
+    );
+
+    for (const item of pendingForConversation) {
+      const candidate = item.candidate;
+      await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+    }
+  }
+
+  async function ensureLocalStream() {
+    if (localStreamRef.current) {
+      return localStreamRef.current;
+    }
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    localStreamRef.current = stream;
+    if (!localMeterCleanupRef.current) {
+      localMeterCleanupRef.current = startVoiceMeter(stream, setLocalVoiceLevel);
+    }
+    return stream;
+  }
+
+  async function createPeerConnection(peerUserId: string, conversationId: string) {
+    const socket = socketRef.current;
+    if (!socket) {
+      throw new Error('Socket is not connected');
+    }
+
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+    }
+
+    const pc = new RTCPeerConnection(RTC_CONFIG);
+    peerConnectionRef.current = pc;
+
+    const localStream = await ensureLocalStream();
+    localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+
+    const remoteStream = new MediaStream();
+    remoteStreamRef.current = remoteStream;
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.srcObject = remoteStream;
+    }
+
+    pc.ontrack = (event) => {
+      event.streams[0]?.getTracks().forEach((track) => remoteStream.addTrack(track));
+      if (!remoteMeterCleanupRef.current) {
+        remoteMeterCleanupRef.current = startVoiceMeter(remoteStream, setRemoteVoiceLevel);
+      }
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current
+          .play()
+          .catch(() => undefined);
+      }
+    };
+
+    pc.onicecandidate = (event) => {
+      if (!event.candidate) {
+        return;
+      }
+
+      socket.emit('call:ice', {
+        toUserId: peerUserId,
+        conversationId,
+        candidate: event.candidate.toJSON(),
+      });
+    };
+
+    pc.onconnectionstatechange = () => {
+      setPeerConnectionState(pc.connectionState);
+      if (pc.connectionState === 'connected') {
+        setCallState('in_call');
+      }
+      if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+        setChatError('Call connection failed');
+        cleanupCallState();
+      }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      setIceConnectionState(pc.iceConnectionState);
+    };
+
+    setCallPeerUserId(peerUserId);
+    setCallConversationId(conversationId);
+    callPeerUserRef.current = peerUserId;
+    callConversationRef.current = conversationId;
+    pendingIceCandidatesRef.current = [];
+    return pc;
+  }
+
+  async function onStartCall() {
+    if (!activeConversation || !activePeer) {
+      setChatError('Open a direct conversation first');
+      return;
+    }
+
+    if (callState !== 'idle') {
+      return;
+    }
+
+    try {
+      const pc = await createPeerConnection(activePeer.id, activeConversation.id);
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      socketRef.current?.emit('call:offer', {
+        toUserId: activePeer.id,
+        conversationId: activeConversation.id,
+        offer,
+      });
+
+      setCallState('calling');
+      setChatError(null);
+    } catch (error) {
+      cleanupCallState();
+      handleError(error);
+    }
+  }
+
+  async function onAcceptCall() {
+    if (!incomingCall) {
+      return;
+    }
+
+    try {
+      const pc = await createPeerConnection(
+        incomingCall.fromUserId,
+        incomingCall.conversationId,
+      );
+      await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.offer));
+      await flushPendingIceCandidates(incomingCall.conversationId);
+
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      socketRef.current?.emit('call:answer', {
+        toUserId: incomingCall.fromUserId,
+        conversationId: incomingCall.conversationId,
+        answer,
+      });
+
+      setSelectedConversationId(incomingCall.conversationId);
+      setIncomingCall(null);
+      setCallState('connecting');
+      setChatError(null);
+    } catch (error) {
+      cleanupCallState();
+      handleError(error);
+    }
+  }
+
+  function onDeclineCall() {
+    if (!incomingCall) {
+      return;
+    }
+
+    socketRef.current?.emit('call:reject', {
+      toUserId: incomingCall.fromUserId,
+      conversationId: incomingCall.conversationId,
+    });
+
+    cleanupCallState();
+  }
+
+  function onEndCall() {
+    if (callPeerUserId && callConversationId) {
+      socketRef.current?.emit('call:end', {
+        toUserId: callPeerUserId,
+        conversationId: callConversationId,
+      });
+    }
+
+    cleanupCallState();
+  }
+
+  function onToggleMute() {
+    const nextMuted = !isMuted;
+    setIsMuted(nextMuted);
+
+    localStreamRef.current?.getAudioTracks().forEach((track) => {
+      track.enabled = !nextMuted;
+    });
   }
 
   async function onLogout() {
@@ -455,7 +857,68 @@ export default function ChatPage() {
 
       <main className={styles.chat}>
         <div className={styles.chatHeader}>
-          <h2>Conversations</h2>
+          <div className={styles.chatHeaderTop}>
+            <h2>Conversations</h2>
+            <div className={styles.callControls}>
+              <button
+                className={styles.callBtn}
+                onClick={onStartCall}
+                disabled={!activeConversation || !activePeer || callState !== 'idle'}
+              >
+                Call
+              </button>
+              <button
+                className={styles.callBtn}
+                onClick={onToggleMute}
+                disabled={callState !== 'in_call'}
+              >
+                {isMuted ? 'Unmute' : 'Mute'}
+              </button>
+              <button
+                className={styles.callEndBtn}
+                onClick={onEndCall}
+                disabled={callState === 'idle'}
+              >
+                End
+              </button>
+            </div>
+          </div>
+          {callState !== 'idle' ? (
+            <div className={styles.callPanel}>
+              <p className={styles.callState}>
+                {callState === 'calling'
+                  ? 'Calling...'
+                  : callState === 'ringing'
+                    ? 'Incoming call...'
+                    : callState === 'connecting'
+                      ? 'Connecting...'
+                      : 'In call'}
+              </p>
+              <p className={styles.callDebug}>
+                Peer: {peerConnectionState} | ICE: {iceConnectionState}
+              </p>
+              <div className={styles.meters}>
+                <div className={styles.meterItem}>
+                  <span>Mic</span>
+                  <div className={styles.meterTrack}>
+                    <div
+                      className={styles.meterFill}
+                      style={{ width: `${localVoiceLevel}%` }}
+                    />
+                  </div>
+                </div>
+                <div className={styles.meterItem}>
+                  <span>Peer</span>
+                  <div className={styles.meterTrack}>
+                    <div
+                      className={styles.meterFillPeer}
+                      style={{ width: `${remoteVoiceLevel}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
           <div className={styles.conversationsRow}>
             {conversationsQuery.isLoading ? (
               <p className={styles.status}>Loading conversations...</p>
@@ -524,7 +987,25 @@ export default function ChatPage() {
         </form>
 
         {chatError ? <p className={styles.error}>{chatError}</p> : null}
+        <audio ref={remoteAudioRef} autoPlay playsInline />
       </main>
+
+      {incomingCall ? (
+        <div className={styles.callModalBackdrop}>
+          <div className={styles.callModal}>
+            <h3>Incoming audio call</h3>
+            <p>From user: {incomingCall.fromUserId}</p>
+            <div className={styles.callModalActions}>
+              <button className={styles.callBtn} onClick={onAcceptCall}>
+                Accept
+              </button>
+              <button className={styles.callEndBtn} onClick={onDeclineCall}>
+                Decline
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

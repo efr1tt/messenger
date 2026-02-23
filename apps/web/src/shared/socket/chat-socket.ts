@@ -17,9 +17,31 @@ export type PresenceEvent = {
   userId: string;
 };
 
+export type CallOfferEvent = {
+  fromUserId: string;
+  conversationId: string;
+  offer: RTCSessionDescriptionInit;
+};
+
+export type CallAnswerEvent = {
+  fromUserId: string;
+  conversationId: string;
+  answer: RTCSessionDescriptionInit;
+};
+
+export type CallIceEvent = {
+  fromUserId: string;
+  conversationId: string;
+  candidate: RTCIceCandidateInit;
+};
+
+export type CallEndEvent = {
+  fromUserId: string;
+  conversationId: string;
+};
+
 export function createChatSocket(accessToken: string): Socket {
   return io(API_BASE, {
-    transports: ['websocket'],
     auth: {
       token: accessToken,
     },

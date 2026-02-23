@@ -1,7 +1,9 @@
 import {
   ConnectedSocket,
+  MessageBody,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
@@ -26,6 +28,29 @@ export type MessageNewPayload = {
     text: string;
     createdAt: Date;
   };
+};
+
+type CallOfferPayload = {
+  toUserId: string;
+  conversationId: string;
+  offer: Record<string, unknown>;
+};
+
+type CallAnswerPayload = {
+  toUserId: string;
+  conversationId: string;
+  answer: Record<string, unknown>;
+};
+
+type CallIcePayload = {
+  toUserId: string;
+  conversationId: string;
+  candidate: Record<string, unknown>;
+};
+
+type CallEndPayload = {
+  toUserId: string;
+  conversationId: string;
 };
 
 @WebSocketGateway({
@@ -84,6 +109,84 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
   }
 
+  @SubscribeMessage('call:offer')
+  handleCallOffer(
+    @ConnectedSocket() socket: AuthenticatedSocket,
+    @MessageBody() payload: CallOfferPayload,
+  ) {
+    if (!socket.data.userId || !payload?.toUserId || !payload?.offer) {
+      return;
+    }
+
+    this.server.to(this.getUserRoom(payload.toUserId)).emit('call:offer', {
+      fromUserId: socket.data.userId,
+      conversationId: payload.conversationId,
+      offer: payload.offer,
+    });
+  }
+
+  @SubscribeMessage('call:answer')
+  handleCallAnswer(
+    @ConnectedSocket() socket: AuthenticatedSocket,
+    @MessageBody() payload: CallAnswerPayload,
+  ) {
+    if (!socket.data.userId || !payload?.toUserId || !payload?.answer) {
+      return;
+    }
+
+    this.server.to(this.getUserRoom(payload.toUserId)).emit('call:answer', {
+      fromUserId: socket.data.userId,
+      conversationId: payload.conversationId,
+      answer: payload.answer,
+    });
+  }
+
+  @SubscribeMessage('call:ice')
+  handleCallIce(
+    @ConnectedSocket() socket: AuthenticatedSocket,
+    @MessageBody() payload: CallIcePayload,
+  ) {
+    if (!socket.data.userId || !payload?.toUserId || !payload?.candidate) {
+      return;
+    }
+
+    this.server.to(this.getUserRoom(payload.toUserId)).emit('call:ice', {
+      fromUserId: socket.data.userId,
+      conversationId: payload.conversationId,
+      candidate: payload.candidate,
+    });
+  }
+
+  @SubscribeMessage('call:end')
+  handleCallEnd(
+    @ConnectedSocket() socket: AuthenticatedSocket,
+    @MessageBody() payload: CallEndPayload,
+  ) {
+    if (!socket.data.userId || !payload?.toUserId) {
+      return;
+    }
+
+    this.server.to(this.getUserRoom(payload.toUserId)).emit('call:end', {
+      fromUserId: socket.data.userId,
+      conversationId: payload.conversationId,
+    });
+  }
+
+  @SubscribeMessage('call:reject')
+  handleCallReject(
+    @ConnectedSocket() socket: AuthenticatedSocket,
+    @MessageBody() payload: CallEndPayload,
+  ) {
+    if (!socket.data.userId || !payload?.toUserId) {
+      return;
+    }
+
+    this.server.to(this.getUserRoom(payload.toUserId)).emit('call:reject', {
+      fromUserId: socket.data.userId,
+      conversationId: payload.conversationId,
+    });
+  }
+
   private extractToken(socket: AuthenticatedSocket) {
     const authToken = socket.handshake.auth?.token;
     if (typeof authToken === 'string' && authToken.length > 0) {
@@ -112,6 +215,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const key = this.getOnlineKey(userId);
 
     await this.redisService.ensureConnected();
+    await this.purgeStaleSockets(key);
     await redis.sadd(key, socketId);
     const count = await redis.scard(key);
 
@@ -125,6 +229,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const key = this.getOnlineKey(userId);
 
     await this.redisService.ensureConnected();
+    await this.purgeStaleSockets(key);
     await redis.srem(key, socketId);
     const count = await redis.scard(key);
 
@@ -135,5 +240,22 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   private getOnlineKey(userId: string) {
     return `online:user:${userId}`;
+  }
+
+  private async purgeStaleSockets(redisKey: string) {
+    const redis = this.redisService.getClient();
+    const socketIds = await redis.smembers(redisKey);
+
+    if (!socketIds.length) {
+      return;
+    }
+
+    const staleSocketIds = socketIds.filter(
+      (socketId) => !this.server.sockets.sockets.has(socketId),
+    );
+
+    if (staleSocketIds.length > 0) {
+      await redis.srem(redisKey, ...staleSocketIds);
+    }
   }
 }
