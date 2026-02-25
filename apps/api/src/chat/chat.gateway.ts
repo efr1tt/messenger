@@ -1,6 +1,7 @@
 import {
   ConnectedSocket,
   MessageBody,
+  OnGatewayInit,
   OnGatewayConnection,
   OnGatewayDisconnect,
   SubscribeMessage,
@@ -34,6 +35,7 @@ type CallOfferPayload = {
   toUserId: string;
   conversationId: string;
   offer: Record<string, unknown>;
+  media?: 'audio' | 'video';
 };
 
 type CallAnswerPayload = {
@@ -59,7 +61,9 @@ type CallEndPayload = {
     credentials: true,
   },
 })
-export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class ChatGateway
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer()
   server!: Server;
 
@@ -67,6 +71,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly jwtService: JwtService,
     private readonly redisService: RedisService,
   ) {}
+
+  async afterInit() {
+    await this.clearOnlinePresenceKeys();
+  }
 
   async handleConnection(@ConnectedSocket() socket: AuthenticatedSocket) {
     const token = this.extractToken(socket);
@@ -114,14 +122,33 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() socket: AuthenticatedSocket,
     @MessageBody() payload: CallOfferPayload,
   ) {
-    if (!socket.data.userId || !payload?.toUserId || !payload?.offer) {
+    if (
+      !socket.data.userId ||
+      !payload?.toUserId ||
+      !payload?.conversationId ||
+      !payload?.offer
+    ) {
       return;
     }
 
-    this.server.to(this.getUserRoom(payload.toUserId)).emit('call:offer', {
+    if (payload.toUserId === socket.data.userId) {
+      return;
+    }
+
+    const recipientRoom = this.getUserRoom(payload.toUserId);
+    if (!this.isRoomOnline(recipientRoom)) {
+      socket.emit('call:unavailable', {
+        toUserId: payload.toUserId,
+        conversationId: payload.conversationId,
+      });
+      return;
+    }
+
+    this.server.to(recipientRoom).emit('call:offer', {
       fromUserId: socket.data.userId,
       conversationId: payload.conversationId,
       offer: payload.offer,
+      media: payload.media === 'video' ? 'video' : 'audio',
     });
   }
 
@@ -130,7 +157,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() socket: AuthenticatedSocket,
     @MessageBody() payload: CallAnswerPayload,
   ) {
-    if (!socket.data.userId || !payload?.toUserId || !payload?.answer) {
+    if (
+      !socket.data.userId ||
+      !payload?.toUserId ||
+      !payload?.conversationId ||
+      !payload?.answer
+    ) {
       return;
     }
 
@@ -146,7 +178,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() socket: AuthenticatedSocket,
     @MessageBody() payload: CallIcePayload,
   ) {
-    if (!socket.data.userId || !payload?.toUserId || !payload?.candidate) {
+    if (
+      !socket.data.userId ||
+      !payload?.toUserId ||
+      !payload?.conversationId ||
+      !payload?.candidate
+    ) {
       return;
     }
 
@@ -162,7 +199,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() socket: AuthenticatedSocket,
     @MessageBody() payload: CallEndPayload,
   ) {
-    if (!socket.data.userId || !payload?.toUserId) {
+    if (!socket.data.userId || !payload?.toUserId || !payload?.conversationId) {
       return;
     }
 
@@ -177,7 +214,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() socket: AuthenticatedSocket,
     @MessageBody() payload: CallEndPayload,
   ) {
-    if (!socket.data.userId || !payload?.toUserId) {
+    if (!socket.data.userId || !payload?.toUserId || !payload?.conversationId) {
       return;
     }
 
@@ -257,5 +294,32 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (staleSocketIds.length > 0) {
       await redis.srem(redisKey, ...staleSocketIds);
     }
+  }
+
+  private isRoomOnline(room: string) {
+    const roomState = this.server.sockets.adapter.rooms.get(room);
+    return Boolean(roomState && roomState.size > 0);
+  }
+
+  private async clearOnlinePresenceKeys() {
+    await this.redisService.ensureConnected();
+    const redis = this.redisService.getClient();
+    let cursor = '0';
+
+    do {
+      const [nextCursor, keys] = await redis.scan(
+        cursor,
+        'MATCH',
+        'online:user:*',
+        'COUNT',
+        200,
+      );
+
+      if (keys.length > 0) {
+        await redis.del(...keys);
+      }
+
+      cursor = nextCursor;
+    } while (cursor !== '0');
   }
 }

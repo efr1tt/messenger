@@ -31,7 +31,9 @@ import {
   CallAnswerEvent,
   CallEndEvent,
   CallIceEvent,
+  CallMediaType,
   CallOfferEvent,
+  CallUnavailableEvent,
   createChatSocket,
   MessageNewEvent,
   PresenceEvent,
@@ -60,6 +62,7 @@ type IncomingCall = {
   fromUserId: string;
   conversationId: string;
   offer: RTCSessionDescriptionInit;
+  media: CallMediaType;
 };
 
 type CallState = 'idle' | 'calling' | 'ringing' | 'connecting' | 'in_call';
@@ -78,6 +81,8 @@ export default function ChatPage() {
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const callConversationRef = useRef<string | null>(null);
   const callPeerUserRef = useRef<string | null>(null);
   const pendingIceCandidatesRef = useRef<PendingIceCandidate[]>([]);
@@ -97,10 +102,12 @@ export default function ChatPage() {
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
   const [callPeerUserId, setCallPeerUserId] = useState<string | null>(null);
   const [callConversationId, setCallConversationId] = useState<string | null>(null);
+  const [callMediaType, setCallMediaType] = useState<CallMediaType>('audio');
   const [localVoiceLevel, setLocalVoiceLevel] = useState(0);
   const [remoteVoiceLevel, setRemoteVoiceLevel] = useState(0);
   const [peerConnectionState, setPeerConnectionState] = useState<RTCPeerConnectionState>('new');
   const [iceConnectionState, setIceConnectionState] = useState<RTCIceConnectionState>('new');
+  const [socketConnected, setSocketConnected] = useState(false);
 
   useEffect(() => {
     callStateRef.current = callState;
@@ -185,6 +192,20 @@ export default function ChatPage() {
     const socket = createChatSocket(accessToken);
     socketRef.current = socket;
 
+    const onSocketConnect = () => {
+      setSocketConnected(true);
+      setChatError(null);
+    };
+
+    const onSocketDisconnect = () => {
+      setSocketConnected(false);
+    };
+
+    const onSocketConnectError = () => {
+      setSocketConnected(false);
+      setChatError('Realtime connection failed. Refresh page or relogin.');
+    };
+
     const onMessageNew = (payload: MessageNewEvent) => {
       const incomingMessage: ConversationMessage = {
         id: payload.message.id,
@@ -266,7 +287,7 @@ export default function ChatPage() {
       });
     };
 
-    const onCallOffer = ({ fromUserId, conversationId, offer }: CallOfferEvent) => {
+    const onCallOffer = ({ fromUserId, conversationId, offer, media }: CallOfferEvent) => {
       if (callStateRef.current !== 'idle') {
         socket.emit('call:reject', {
           toUserId: fromUserId,
@@ -274,7 +295,7 @@ export default function ChatPage() {
         });
         return;
       }
-      setIncomingCall({ fromUserId, conversationId, offer });
+      setIncomingCall({ fromUserId, conversationId, offer, media: media === 'video' ? 'video' : 'audio' });
       setCallState('ringing');
     };
 
@@ -320,6 +341,18 @@ export default function ChatPage() {
       cleanupCallState();
     };
 
+    const onCallUnavailable = ({ conversationId }: CallUnavailableEvent) => {
+      if (callConversationRef.current && conversationId !== callConversationRef.current) {
+        return;
+      }
+
+      setChatError('Peer is offline or not connected to realtime.');
+      cleanupCallState();
+    };
+
+    socket.on('connect', onSocketConnect);
+    socket.on('disconnect', onSocketDisconnect);
+    socket.on('connect_error', onSocketConnectError);
     socket.on('message:new', onMessageNew);
     socket.on('presence:online', onPresenceOnline);
     socket.on('presence:offline', onPresenceOffline);
@@ -328,8 +361,12 @@ export default function ChatPage() {
     socket.on('call:ice', onCallIce);
     socket.on('call:end', onCallEnd);
     socket.on('call:reject', onCallEnd);
+    socket.on('call:unavailable', onCallUnavailable);
 
     return () => {
+      socket.off('connect', onSocketConnect);
+      socket.off('disconnect', onSocketDisconnect);
+      socket.off('connect_error', onSocketConnectError);
       socket.off('message:new', onMessageNew);
       socket.off('presence:online', onPresenceOnline);
       socket.off('presence:offline', onPresenceOffline);
@@ -338,8 +375,10 @@ export default function ChatPage() {
       socket.off('call:ice', onCallIce);
       socket.off('call:end', onCallEnd);
       socket.off('call:reject', onCallEnd);
+      socket.off('call:unavailable', onCallUnavailable);
       socket.disconnect();
       socketRef.current = null;
+      setSocketConnected(false);
     };
   }, [mounted, hasToken, queryClient]);
 
@@ -453,6 +492,29 @@ export default function ChatPage() {
     remoteAudioRef.current.srcObject = remoteStreamRef.current;
   }, [callState]);
 
+  useEffect(() => {
+    if (callState === 'idle' || callMediaType !== 'video') {
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = null;
+      }
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = null;
+      }
+      return;
+    }
+
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = localStreamRef.current;
+      localVideoRef.current.muted = true;
+      localVideoRef.current.play().catch(() => undefined);
+    }
+
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = remoteStreamRef.current;
+      remoteVideoRef.current.play().catch(() => undefined);
+    }
+  }, [callState, callMediaType]);
+
   if (!mounted || hasToken === null || meQuery.isLoading) {
     return (
       <div className={styles.center}>
@@ -490,6 +552,12 @@ export default function ChatPage() {
     if (remoteAudioRef.current) {
       remoteAudioRef.current.srcObject = null;
     }
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = null;
+    }
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = null;
+    }
 
     setIncomingCall(null);
     setCallPeerUserId(null);
@@ -499,6 +567,7 @@ export default function ChatPage() {
     pendingIceCandidatesRef.current = [];
     setCallState('idle');
     setIsMuted(false);
+    setCallMediaType('audio');
     setLocalVoiceLevel(0);
     setRemoteVoiceLevel(0);
     setPeerConnectionState('new');
@@ -558,22 +627,70 @@ export default function ChatPage() {
     }
   }
 
-  async function ensureLocalStream() {
-    if (localStreamRef.current) {
-      return localStreamRef.current;
+  async function ensureLocalStream(mediaType: CallMediaType) {
+    const currentStream = localStreamRef.current;
+    const shouldHaveVideo = mediaType === 'video';
+    const hasVideoTrack = currentStream?.getVideoTracks().length ? true : false;
+
+    if (currentStream && (shouldHaveVideo ? hasVideoTrack : true)) {
+      if (shouldHaveVideo) {
+        currentStream.getVideoTracks().forEach((track) => {
+          track.enabled = true;
+        });
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = currentStream;
+          localVideoRef.current.muted = true;
+          localVideoRef.current.play().catch(() => undefined);
+        }
+      } else {
+        currentStream.getVideoTracks().forEach((track) => {
+          track.enabled = false;
+        });
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = null;
+        }
+      }
+      return currentStream;
     }
 
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-    localStreamRef.current = stream;
-    if (!localMeterCleanupRef.current) {
-      localMeterCleanupRef.current = startVoiceMeter(stream, setLocalVoiceLevel);
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+      video: shouldHaveVideo,
+    });
+
+    if (currentStream) {
+      currentStream.getTracks().forEach((track) => track.stop());
     }
+
+    localStreamRef.current = stream;
+    if (localMeterCleanupRef.current) {
+      localMeterCleanupRef.current();
+      localMeterCleanupRef.current = null;
+    }
+    localMeterCleanupRef.current = startVoiceMeter(stream, setLocalVoiceLevel);
+
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = shouldHaveVideo ? stream : null;
+      if (shouldHaveVideo) {
+        localVideoRef.current.muted = true;
+        localVideoRef.current.play().catch(() => undefined);
+      }
+    }
+
     return stream;
   }
 
-  async function createPeerConnection(peerUserId: string, conversationId: string) {
+  async function createPeerConnection(
+    peerUserId: string,
+    conversationId: string,
+    mediaType: CallMediaType,
+  ) {
     const socket = socketRef.current;
-    if (!socket) {
+    if (!socket || !socket.connected) {
       throw new Error('Socket is not connected');
     }
 
@@ -584,7 +701,7 @@ export default function ChatPage() {
     const pc = new RTCPeerConnection(RTC_CONFIG);
     peerConnectionRef.current = pc;
 
-    const localStream = await ensureLocalStream();
+    const localStream = await ensureLocalStream(mediaType);
     localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
 
     const remoteStream = new MediaStream();
@@ -602,6 +719,10 @@ export default function ChatPage() {
         remoteAudioRef.current
           .play()
           .catch(() => undefined);
+      }
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = remoteStream;
+        remoteVideoRef.current.play().catch(() => undefined);
       }
     };
 
@@ -634,13 +755,14 @@ export default function ChatPage() {
 
     setCallPeerUserId(peerUserId);
     setCallConversationId(conversationId);
+    setCallMediaType(mediaType);
     callPeerUserRef.current = peerUserId;
     callConversationRef.current = conversationId;
     pendingIceCandidatesRef.current = [];
     return pc;
   }
 
-  async function onStartCall() {
+  async function onStartCall(mediaType: CallMediaType) {
     if (!activeConversation || !activePeer) {
       setChatError('Open a direct conversation first');
       return;
@@ -650,8 +772,13 @@ export default function ChatPage() {
       return;
     }
 
+    if (!socketRef.current?.connected) {
+      setChatError('Realtime socket is not connected');
+      return;
+    }
+
     try {
-      const pc = await createPeerConnection(activePeer.id, activeConversation.id);
+      const pc = await createPeerConnection(activePeer.id, activeConversation.id, mediaType);
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
@@ -659,6 +786,7 @@ export default function ChatPage() {
         toUserId: activePeer.id,
         conversationId: activeConversation.id,
         offer,
+        media: mediaType,
       });
 
       setCallState('calling');
@@ -678,6 +806,7 @@ export default function ChatPage() {
       const pc = await createPeerConnection(
         incomingCall.fromUserId,
         incomingCall.conversationId,
+        incomingCall.media,
       );
       await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.offer));
       await flushPendingIceCandidates(incomingCall.conversationId);
@@ -862,10 +991,21 @@ export default function ChatPage() {
             <div className={styles.callControls}>
               <button
                 className={styles.callBtn}
-                onClick={onStartCall}
-                disabled={!activeConversation || !activePeer || callState !== 'idle'}
+                onClick={() => onStartCall('audio')}
+                disabled={
+                  !activeConversation || !activePeer || callState !== 'idle' || !socketConnected
+                }
               >
-                Call
+                Audio
+              </button>
+              <button
+                className={styles.callBtn}
+                onClick={() => onStartCall('video')}
+                disabled={
+                  !activeConversation || !activePeer || callState !== 'idle' || !socketConnected
+                }
+              >
+                Video
               </button>
               <button
                 className={styles.callBtn}
@@ -887,15 +1027,24 @@ export default function ChatPage() {
             <div className={styles.callPanel}>
               <p className={styles.callState}>
                 {callState === 'calling'
-                  ? 'Calling...'
+                  ? callMediaType === 'video'
+                    ? 'Video calling...'
+                    : 'Calling...'
                   : callState === 'ringing'
-                    ? 'Incoming call...'
+                    ? incomingCall?.media === 'video'
+                      ? 'Incoming video call...'
+                      : 'Incoming call...'
                     : callState === 'connecting'
-                      ? 'Connecting...'
-                      : 'In call'}
+                      ? callMediaType === 'video'
+                        ? 'Connecting video...'
+                        : 'Connecting...'
+                      : callMediaType === 'video'
+                        ? 'In video call'
+                        : 'In call'}
               </p>
               <p className={styles.callDebug}>
-                Peer: {peerConnectionState} | ICE: {iceConnectionState}
+                Socket: {socketConnected ? 'connected' : 'disconnected'} | Peer:{' '}
+                {peerConnectionState} | ICE: {iceConnectionState}
               </p>
               <div className={styles.meters}>
                 <div className={styles.meterItem}>
@@ -917,6 +1066,23 @@ export default function ChatPage() {
                   </div>
                 </div>
               </div>
+              {callMediaType === 'video' ? (
+                <div className={styles.videoGrid}>
+                  <video
+                    ref={remoteVideoRef}
+                    autoPlay
+                    playsInline
+                    className={styles.remoteVideo}
+                  />
+                  <video
+                    ref={localVideoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className={styles.localVideo}
+                  />
+                </div>
+              ) : null}
             </div>
           ) : null}
           <div className={styles.conversationsRow}>
@@ -993,7 +1159,7 @@ export default function ChatPage() {
       {incomingCall ? (
         <div className={styles.callModalBackdrop}>
           <div className={styles.callModal}>
-            <h3>Incoming audio call</h3>
+            <h3>{incomingCall.media === 'video' ? 'Incoming video call' : 'Incoming audio call'}</h3>
             <p>From user: {incomingCall.fromUserId}</p>
             <div className={styles.callModalActions}>
               <button className={styles.callBtn} onClick={onAcceptCall}>

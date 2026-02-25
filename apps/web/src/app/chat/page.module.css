@@ -252,6 +252,30 @@
   background: #193d7d;
 }
 
+.videoGrid {
+  display: grid;
+  grid-template-columns: 1fr 160px;
+  gap: 8px;
+  align-items: end;
+}
+
+.remoteVideo,
+.localVideo {
+  width: 100%;
+  border-radius: 10px;
+  background: #101828;
+  border: 1px solid #344054;
+}
+
+.remoteVideo {
+  aspect-ratio: 16 / 9;
+  min-height: 140px;
+}
+
+.localVideo {
+  aspect-ratio: 16 / 9;
+}
+
 .conversationsRow {
   display: flex;
   gap: 8px;
@@ -359,5 +383,13 @@
 
   .chat {
     min-height: 52vh;
+  }
+
+  .videoGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .localVideo {
+    width: min(220px, 100%);
   }
 }

@@ -17,10 +17,13 @@ export type PresenceEvent = {
   userId: string;
 };
 
+export type CallMediaType = 'audio' | 'video';
+
 export type CallOfferEvent = {
   fromUserId: string;
   conversationId: string;
   offer: RTCSessionDescriptionInit;
+  media?: CallMediaType;
 };
 
 export type CallAnswerEvent = {
@@ -40,10 +43,16 @@ export type CallEndEvent = {
   conversationId: string;
 };
 
+export type CallUnavailableEvent = {
+  toUserId: string;
+  conversationId: string;
+};
+
 export function createChatSocket(accessToken: string): Socket {
   return io(API_BASE, {
     auth: {
       token: accessToken,
     },
+    transports: ['websocket', 'polling'],
   });
 }
