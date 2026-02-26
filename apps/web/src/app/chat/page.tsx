@@ -1099,7 +1099,12 @@ export default function ChatPage() {
             {friendsQuery.isLoading ? <p className={styles.status}>Loading friends...</p> : null}
             {friendsQuery.isError ? <p className={styles.statusError}>Failed to load friends</p> : null}
             {friendsQuery.data?.map((item) => (
-              <div key={item.id} className={`${styles.listItem} ${styles.friendListItem}`}>
+              <div
+                key={item.id}
+                className={`${styles.listItem} ${styles.friendListItem} ${
+                  activePeer?.id === item.friend.id ? styles.friendListItemActive : ''
+                }`}
+              >
                 <div className={styles.friendTopRow}>
                   <button
                     className={styles.friendMainBtn}
