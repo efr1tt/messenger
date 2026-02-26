@@ -9,6 +9,9 @@ datasource db {
 
 model User {
   id           String    @id @default(cuid())
+  username     String    @unique
+  displayName  String
+  avatarKey    String?
   email        String    @unique
   passwordHash String
   sessions     Session[]

@@ -6,11 +6,13 @@ export type AuthTokens = {
 export type AuthPayload = {
   sub: string;
   email: string;
+  username: string;
 };
 
 export type AccessPayload = {
   sub: string;
   email: string;
+  username: string;
   type: 'access';
   iat: number;
   exp: number;
@@ -27,4 +29,6 @@ export type RefreshPayload = {
 export type AuthenticatedUser = {
   id: string;
   email: string;
+  username: string;
+  avatarKey?: string | null;
 };

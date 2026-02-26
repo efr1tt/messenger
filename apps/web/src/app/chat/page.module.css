@@ -28,6 +28,15 @@
   margin-bottom: 16px;
 }
 
+.userIdentity {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 10px;
+  align-items: center;
+  min-height: 40px;
+}
+
 .userTitle {
   font-size: 12px;
   color: #667085;
@@ -36,16 +45,93 @@
 }
 
 .userEmail {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: center;
+  line-height: 1.1;
   font-size: 14px;
   color: #101828;
   font-weight: 600;
 }
 
-.logoutBtn {
+.userEmailBtn {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-size: 14px;
+  color: #101828;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.displayNameEditor {
+  grid-column: 2;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.selfAvatarBtn {
+  grid-row: 1;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 1px solid #d0d5dd;
+  background: #f2f4f7;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  font-size: 22px;
+}
+
+.avatarPicker {
+  grid-column: 1 / span 2;
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid #d0d5dd;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.avatarOption {
   border: 1px solid #d0d5dd;
   background: #fff;
   border-radius: 8px;
-  padding: 8px 10px;
+  height: 34px;
+  cursor: pointer;
+  font-size: 18px;
+}
+
+.logoutBtn {
+  border: 1px solid #d0d5dd;
+  background: #fff;
+  border-radius: 9px;
+  padding: 4px 10px;
+  height: 30px;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.topActionBtn {
+  border: 1px solid #d0d5dd;
+  background: #fff;
+  border-radius: 9px;
+  padding: 4px 10px;
+  height: 30px;
+  font-size: 13px;
+  line-height: 1;
   cursor: pointer;
 }
 
@@ -83,7 +169,7 @@
   padding: 8px;
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   font-size: 13px;
 }
@@ -97,12 +183,92 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  font-weight: 600;
+}
+
+.friendListItem {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.friendTopRow {
+  display: block;
+}
+
+.friendMainBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #e4e7ec;
+  border-radius: 10px;
+  background: #ffffff;
+  text-align: left;
+  padding: 10px;
+  cursor: pointer;
+  color: #0f172b;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.friendMainBtn:hover {
+  background: #f8fafc;
+}
+
+.userLine {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.avatarBubble {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: #e6ebff;
+  display: inline-grid;
+  place-items: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.friendName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.friendAvatarWrap {
+  position: relative;
+  width: 28px;
+  height: 28px;
+}
+
+.aliasEditor {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.aliasInput {
+  border: 1px solid #c9d3ea;
+  border-radius: 8px;
+  padding: 6px 8px;
+  min-width: 132px;
 }
 
 .presenceDotOnline,
 .presenceDotOffline {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid #fff;
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
   border-radius: 999px;
   flex-shrink: 0;
 }
@@ -114,6 +280,7 @@
 
 .presenceDotOffline {
   background: #98a2b3;
+  box-shadow: none;
 }
 
 .actions {
@@ -121,7 +288,7 @@
   gap: 8px;
 }
 
-.listItem button,
+.listItem button:not(.friendMainBtn),
 .actions button,
 .sendForm button,
 .conversationBtn,
@@ -383,6 +550,13 @@
 
   .chat {
     min-height: 52vh;
+  }
+
+  .friendName {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    word-break: break-word;
   }
 
   .videoGrid {

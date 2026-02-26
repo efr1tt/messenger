@@ -129,6 +129,9 @@ export class FriendsService {
         friend: {
           select: {
             id: true,
+            username: true,
+            displayName: true,
+            avatarKey: true,
             email: true,
             createdAt: true,
           },
@@ -167,6 +170,9 @@ export class FriendsService {
         from: {
           select: {
             id: true,
+            username: true,
+            displayName: true,
+            avatarKey: true,
             email: true,
             createdAt: true,
           },

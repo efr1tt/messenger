@@ -6,6 +6,9 @@ export type FriendItem = {
   isOnline: boolean;
   friend: {
     id: string;
+    username: string;
+    displayName: string;
+    avatarKey?: string | null;
     email: string;
     createdAt: string;
   };
@@ -17,6 +20,9 @@ export type IncomingRequestItem = {
   createdAt: string;
   from: {
     id: string;
+    username: string;
+    displayName: string;
+    avatarKey?: string | null;
     email: string;
     createdAt: string;
   };

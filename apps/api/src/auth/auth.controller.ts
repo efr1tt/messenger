@@ -24,7 +24,11 @@ export class AuthController {
   @Post('refresh')
   @HttpCode(200)
   refresh(@Body() dto: RefreshDto, @Req() req: Request) {
-    return this.authService.refresh(dto.refreshToken, this.getUserAgent(req), req.ip);
+    return this.authService.refresh(
+      dto.refreshToken,
+      this.getUserAgent(req),
+      req.ip,
+    );
   }
 
   @Post('logout')

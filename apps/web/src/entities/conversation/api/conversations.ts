@@ -13,7 +13,13 @@ export type ConversationItem = {
   isDirect: boolean;
   createdAt: string;
   updatedAt: string;
-  members: Array<{ id: string; email: string }>;
+  members: Array<{
+    id: string;
+    username: string;
+    displayName: string;
+    avatarKey?: string | null;
+    email: string;
+  }>;
   lastMessage: ConversationMessage | null;
   unreadCount: number;
 };

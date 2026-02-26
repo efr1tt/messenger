@@ -26,7 +26,12 @@ import {
   getStoredUser,
 } from '@/entities/session/model/storage';
 import { AuthUser } from '@/entities/session/model/types';
-import { getMe, searchUsers } from '@/entities/user/api/users';
+import {
+  getMe,
+  searchUsers,
+  updateMyAvatar,
+  updateMyDisplayName,
+} from '@/entities/user/api/users';
 import {
   CallAnswerEvent,
   CallEndEvent,
@@ -53,6 +58,20 @@ const queryKeys = {
   messages: (conversationId: string | null) => ['messages', conversationId] as const,
   userSearch: (term: string) => ['userSearch', term] as const,
 };
+
+const AVATAR_OPTIONS = [
+  { key: 'none', emoji: '🙂', label: 'Default' },
+  { key: 'cool-cat', emoji: '😼', label: 'Cool Cat' },
+  { key: 'doge', emoji: '🐶', label: 'Doge' },
+  { key: 'froggy', emoji: '🐸', label: 'Froggy' },
+  { key: 'capy', emoji: '🦫', label: 'Capy' },
+  { key: 'shiba', emoji: '🐕', label: 'Shiba' },
+  { key: 'alien', emoji: '👽', label: 'Alien' },
+  { key: 'robot', emoji: '🤖', label: 'Robot' },
+  { key: 'banana', emoji: '🍌', label: 'Banana' },
+  { key: 'penguin', emoji: '🐧', label: 'Penguin' },
+  { key: 'panda', emoji: '🐼', label: 'Panda' },
+] as const;
 
 const RTC_CONFIG: RTCConfiguration = {
   iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
@@ -108,6 +127,9 @@ export default function ChatPage() {
   const [peerConnectionState, setPeerConnectionState] = useState<RTCPeerConnectionState>('new');
   const [iceConnectionState, setIceConnectionState] = useState<RTCIceConnectionState>('new');
   const [socketConnected, setSocketConnected] = useState(false);
+  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
+  const [editingDisplayName, setEditingDisplayName] = useState(false);
+  const [displayNameDraft, setDisplayNameDraft] = useState('');
 
   useEffect(() => {
     callStateRef.current = callState;
@@ -129,12 +151,16 @@ export default function ChatPage() {
     queryKey: queryKeys.friends,
     queryFn: getFriends,
     enabled: mounted && hasToken === true,
+    refetchInterval: 3000,
+    refetchOnWindowFocus: true,
   });
 
   const requestsQuery = useQuery({
     queryKey: queryKeys.friendRequests,
     queryFn: getIncomingRequests,
     enabled: mounted && hasToken === true,
+    refetchInterval: 3000,
+    refetchOnWindowFocus: true,
   });
 
   const conversationsQuery = useQuery({
@@ -165,6 +191,7 @@ export default function ChatPage() {
   useEffect(() => {
     if (meQuery.data) {
       setCurrentUser(meQuery.data);
+      setDisplayNameDraft(meQuery.data.displayName || '');
     }
   }, [meQuery.data]);
 
@@ -436,6 +463,30 @@ export default function ChatPage() {
     onSuccess: () => {
       setChatError(null);
       queryClient.invalidateQueries({ queryKey: queryKeys.friendRequests });
+    },
+    onError: handleError,
+  });
+
+  const updateAvatarMutation = useMutation({
+    mutationFn: (avatarKey: string | null) => updateMyAvatar(avatarKey),
+    onSuccess: (user) => {
+      setCurrentUser(user);
+      queryClient.setQueryData(queryKeys.me, user);
+      queryClient.invalidateQueries({ queryKey: queryKeys.friends });
+      queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
+      setAvatarPickerOpen(false);
+    },
+    onError: handleError,
+  });
+
+  const updateDisplayNameMutation = useMutation({
+    mutationFn: (displayName: string) => updateMyDisplayName(displayName),
+    onSuccess: (user) => {
+      setCurrentUser(user);
+      queryClient.setQueryData(queryKeys.me, user);
+      queryClient.invalidateQueries({ queryKey: queryKeys.friends });
+      queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
+      setEditingDisplayName(false);
     },
     onError: handleError,
   });
@@ -880,6 +931,43 @@ export default function ChatPage() {
     createDirectMutation.mutate(friendId);
   }
 
+  function getUserLabel(user: {
+    displayName?: string | null;
+    username?: string | null;
+    email?: string | null;
+  }) {
+    return user.displayName || user.username || user.email || 'Unknown user';
+  }
+
+  function getAvatarEmoji(avatarKey?: string | null) {
+    const option = AVATAR_OPTIONS.find((item) => item.key === (avatarKey || 'none'));
+    return option?.emoji || '🙂';
+  }
+
+  function onSelectAvatar(avatarKey: string) {
+    const normalized = avatarKey === 'none' ? null : avatarKey;
+    updateAvatarMutation.mutate(normalized);
+  }
+
+  function onStartDisplayNameEdit() {
+    setEditingDisplayName(true);
+    setDisplayNameDraft(currentUser?.displayName || '');
+  }
+
+  function onSaveDisplayName() {
+    const nextName = displayNameDraft.trim();
+    if (!nextName) {
+      setChatError('Name cannot be empty');
+      return;
+    }
+    updateDisplayNameMutation.mutate(nextName);
+  }
+
+  function onCancelDisplayNameEdit() {
+    setEditingDisplayName(false);
+    setDisplayNameDraft(currentUser?.displayName || '');
+  }
+
   function onSendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedConversationId) {
@@ -911,9 +999,48 @@ export default function ChatPage() {
     <div className={styles.page}>
       <aside className={styles.sidebar}>
         <div className={styles.userBar}>
-          <div>
-            <p className={styles.userTitle}>Logged in</p>
-            <p className={styles.userEmail}>{currentUser?.email || 'Unknown user'}</p>
+          <div className={styles.userIdentity}>
+            <button
+              className={styles.selfAvatarBtn}
+              onClick={() => setAvatarPickerOpen((prev) => !prev)}
+              title="Choose avatar"
+            >
+              <span>{getAvatarEmoji(currentUser?.avatarKey)}</span>
+            </button>
+            {editingDisplayName ? (
+              <div className={styles.displayNameEditor}>
+                <input
+                  className={styles.aliasInput}
+                  value={displayNameDraft}
+                  maxLength={40}
+                  onChange={(event) => setDisplayNameDraft(event.target.value)}
+                />
+                <button className={styles.topActionBtn} onClick={onSaveDisplayName}>
+                  Save
+                </button>
+                <button className={styles.topActionBtn} onClick={onCancelDisplayNameEdit}>
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button className={styles.userEmailBtn} onClick={onStartDisplayNameEdit}>
+                {getUserLabel(currentUser || {})}
+              </button>
+            )}
+            {avatarPickerOpen ? (
+              <div className={styles.avatarPicker}>
+                {AVATAR_OPTIONS.map((option) => (
+                  <button
+                    key={option.key}
+                    className={styles.avatarOption}
+                    onClick={() => onSelectAvatar(option.key)}
+                    title={option.label}
+                  >
+                    {option.emoji}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
           <button className={styles.logoutBtn} onClick={onLogout}>
             Logout
@@ -924,7 +1051,7 @@ export default function ChatPage() {
           <h3>Search users</h3>
           <input
             className={styles.input}
-            placeholder="type email..."
+            placeholder="type username..."
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
           />
@@ -933,7 +1060,10 @@ export default function ChatPage() {
             {searchQuery.isError ? <p className={styles.statusError}>Search failed</p> : null}
             {searchQuery.data?.map((user) => (
               <div key={user.id} className={styles.listItem}>
-                <span>{user.email}</span>
+                <span className={styles.userLine}>
+                  <span className={styles.avatarBubble}>{getAvatarEmoji(user.avatarKey)}</span>
+                  <span>{getUserLabel(user)}</span>
+                </span>
                 <button onClick={() => sendRequestMutation.mutate(user.id)}>Request</button>
               </div>
             ))}
@@ -943,25 +1073,25 @@ export default function ChatPage() {
           </div>
         </section>
 
-        <section className={styles.block}>
-          <h3>Requests</h3>
-          <div className={styles.list}>
-            {requestsQuery.isLoading ? <p className={styles.status}>Loading requests...</p> : null}
-            {requestsQuery.isError ? (
-              <p className={styles.statusError}>Failed to load requests</p>
-            ) : null}
-            {requestsQuery.data?.map((item) => (
-              <div key={item.id} className={styles.listItemCol}>
-                <span>{item.from.email}</span>
-                <div className={styles.actions}>
-                  <button onClick={() => acceptMutation.mutate(item.id)}>Accept</button>
-                  <button onClick={() => declineMutation.mutate(item.id)}>Decline</button>
+        {requestsQuery.data?.length ? (
+          <section className={styles.block}>
+            <h3>Requests</h3>
+            <div className={styles.list}>
+              {requestsQuery.data?.map((item) => (
+                <div key={item.id} className={styles.listItemCol}>
+                  <span className={styles.userLine}>
+                    <span className={styles.avatarBubble}>{getAvatarEmoji(item.from.avatarKey)}</span>
+                    <span>{getUserLabel(item.from)}</span>
+                  </span>
+                  <div className={styles.actions}>
+                    <button onClick={() => acceptMutation.mutate(item.id)}>Accept</button>
+                    <button onClick={() => declineMutation.mutate(item.id)}>Decline</button>
+                  </div>
                 </div>
-              </div>
-            ))}
-            {!requestsQuery.data?.length ? <p className={styles.empty}>No incoming requests</p> : null}
-          </div>
-        </section>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <section className={styles.block}>
           <h3>Friends</h3>
@@ -969,14 +1099,24 @@ export default function ChatPage() {
             {friendsQuery.isLoading ? <p className={styles.status}>Loading friends...</p> : null}
             {friendsQuery.isError ? <p className={styles.statusError}>Failed to load friends</p> : null}
             {friendsQuery.data?.map((item) => (
-              <div key={item.id} className={styles.listItem}>
-                <span className={styles.friendRow}>
-                  <span
-                    className={item.isOnline ? styles.presenceDotOnline : styles.presenceDotOffline}
-                  />
-                  {item.friend.email}
-                </span>
-                <button onClick={() => onOpenDirect(item.friend.id)}>Chat</button>
+              <div key={item.id} className={`${styles.listItem} ${styles.friendListItem}`}>
+                <div className={styles.friendTopRow}>
+                  <button
+                    className={styles.friendMainBtn}
+                    onClick={() => onOpenDirect(item.friend.id)}
+                    title="Open chat"
+                  >
+                    <span className={styles.friendAvatarWrap}>
+                      <span className={styles.avatarBubble}>{getAvatarEmoji(item.friend.avatarKey)}</span>
+                      <span
+                        className={item.isOnline ? styles.presenceDotOnline : styles.presenceDotOffline}
+                      />
+                    </span>
+                    <span className={styles.friendName}>
+                      {getUserLabel(item.friend)}
+                    </span>
+                  </button>
+                </div>
               </div>
             ))}
             {!friendsQuery.data?.length ? <p className={styles.empty}>No friends yet</p> : null}
@@ -1104,7 +1244,7 @@ export default function ChatPage() {
               >
                 {conversation.members
                   .filter((member) => member.id !== currentUser?.id)
-                  .map((member) => member.email)
+                  .map((member) => getUserLabel(member))
                   .join(', ') || 'Conversation'}
                 {conversation.unreadCount > 0 ? (
                   <span className={styles.unreadBadge}>{conversation.unreadCount}</span>

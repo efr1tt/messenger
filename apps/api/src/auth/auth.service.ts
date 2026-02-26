@@ -22,16 +22,29 @@ export class AuthService {
 
   async register(dto: RegisterDto, userAgent?: string, ipAddress?: string) {
     const email = dto.email.trim().toLowerCase();
+    const username = dto.username.trim().toLowerCase();
+    const displayName = dto.displayName.trim();
     const existing = await this.prisma.user.findUnique({ where: { email } });
 
     if (existing) {
       throw new BadRequestException('Email is already in use');
     }
 
+    const existingUsername = await this.prisma.user.findUnique({
+      where: { username },
+      select: { id: true },
+    });
+
+    if (existingUsername) {
+      throw new BadRequestException('Username is already in use');
+    }
+
     const passwordHash = await bcrypt.hash(dto.password, 12);
 
     const user = await this.prisma.user.create({
       data: {
+        username,
+        displayName,
         email,
         passwordHash,
       },
@@ -152,6 +165,7 @@ export class AuthService {
       {
         sub: user.id,
         email: user.email,
+        username: user.username,
         type: 'access',
       },
       {
@@ -218,6 +232,9 @@ export class AuthService {
   private toPublicUser(user: User) {
     return {
       id: user.id,
+      username: user.username,
+      displayName: user.displayName,
+      avatarKey: user.avatarKey,
       email: user.email,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,

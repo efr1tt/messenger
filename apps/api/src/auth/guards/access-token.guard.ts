@@ -31,13 +31,19 @@ export class AccessTokenGuard implements CanActivate {
         secret: getAccessSecret(),
       });
 
-      if (payload.type !== 'access' || !payload.sub || !payload.email) {
+      if (
+        payload.type !== 'access' ||
+        !payload.sub ||
+        !payload.email ||
+        !payload.username
+      ) {
         throw new UnauthorizedException('Invalid access token');
       }
 
       req.user = {
         id: payload.sub,
         email: payload.email,
+        username: payload.username,
       };
 
       return true;

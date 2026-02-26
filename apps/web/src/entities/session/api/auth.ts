@@ -6,7 +6,12 @@ export type AuthCredentials = {
   password: string;
 };
 
-export async function register(payload: AuthCredentials) {
+export type RegisterCredentials = AuthCredentials & {
+  username: string;
+  displayName: string;
+};
+
+export async function register(payload: RegisterCredentials) {
   const { data } = await client.post<AuthResponse>('/auth/register', payload);
   return data;
 }

@@ -1,4 +1,11 @@
-import { Body, Controller, Get, HttpCode, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { CurrentUserId } from '../auth/decorators/current-user-id.decorator';
 import { AccessTokenGuard } from '../auth/guards/access-token.guard';
 import { RespondFriendRequestDto } from './dto/respond-friend-request.dto';
@@ -11,10 +18,7 @@ export class FriendsController {
   constructor(private readonly friendsService: FriendsService) {}
 
   @Post('request')
-  request(
-    @CurrentUserId() userId: string,
-    @Body() dto: RequestFriendDto,
-  ) {
+  request(@CurrentUserId() userId: string, @Body() dto: RequestFriendDto) {
     return this.friendsService.requestFriend(userId, dto.toUserId);
   }
 

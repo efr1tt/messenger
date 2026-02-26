@@ -12,6 +12,10 @@ export class MessagesController {
   @Post()
   @HttpCode(201)
   send(@CurrentUserId() currentUserId: string, @Body() dto: SendMessageDto) {
-    return this.messagesService.send(currentUserId, dto.conversationId, dto.text);
+    return this.messagesService.send(
+      currentUserId,
+      dto.conversationId,
+      dto.text,
+    );
   }
 }

@@ -11,7 +11,9 @@ export class ConversationsService {
 
   async createDirect(currentUserId: string, targetUserId: string) {
     if (currentUserId === targetUserId) {
-      throw new BadRequestException('Cannot create a direct conversation with yourself');
+      throw new BadRequestException(
+        'Cannot create a direct conversation with yourself',
+      );
     }
 
     const targetUser = await this.prisma.user.findUnique({
@@ -34,7 +36,9 @@ export class ConversationsService {
     });
 
     if (!areFriends) {
-      throw new BadRequestException('Direct conversation is allowed only with friends');
+      throw new BadRequestException(
+        'Direct conversation is allowed only with friends',
+      );
     }
 
     const directKey = this.buildDirectKey(currentUserId, targetUserId);
@@ -51,6 +55,9 @@ export class ConversationsService {
             user: {
               select: {
                 id: true,
+                username: true,
+                displayName: true,
+                avatarKey: true,
                 email: true,
               },
             },
@@ -102,6 +109,9 @@ export class ConversationsService {
               user: {
                 select: {
                   id: true,
+                  username: true,
+                  displayName: true,
+                  avatarKey: true,
                   email: true,
                 },
               },
@@ -134,6 +144,9 @@ export class ConversationsService {
                 user: {
                   select: {
                     id: true,
+                    username: true,
+                    displayName: true,
+                    avatarKey: true,
                     email: true,
                   },
                 },
@@ -223,7 +236,8 @@ export class ConversationsService {
         : {}),
     });
 
-    const nextCursor = messages.length === take ? messages[messages.length - 1].id : null;
+    const nextCursor =
+      messages.length === take ? messages[messages.length - 1].id : null;
 
     return {
       items: messages.reverse(),

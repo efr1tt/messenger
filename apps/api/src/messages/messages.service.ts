@@ -22,7 +22,10 @@ export class MessagesService {
       throw new BadRequestException('Message text cannot be empty');
     }
 
-    await this.conversationsService.ensureMembership(currentUserId, conversationId);
+    await this.conversationsService.ensureMembership(
+      currentUserId,
+      conversationId,
+    );
 
     const conversation = await this.prisma.conversation.findUnique({
       where: { id: conversationId },
@@ -40,7 +43,9 @@ export class MessagesService {
     }
 
     if (conversation.isDirect) {
-      const peer = conversation.members.find((member) => member.userId !== currentUserId);
+      const peer = conversation.members.find(
+        (member) => member.userId !== currentUserId,
+      );
       if (!peer) {
         throw new BadRequestException('Direct conversation is invalid');
       }
