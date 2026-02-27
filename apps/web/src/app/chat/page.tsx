@@ -86,6 +86,7 @@ type IncomingCall = {
 };
 
 type CallState = 'idle' | 'calling' | 'ringing' | 'connecting' | 'in_call';
+type MobileView = 'contacts' | 'chat' | 'call';
 type PendingIceCandidate = {
   conversationId: string;
   candidate: RTCIceCandidateInit;
@@ -134,6 +135,9 @@ export default function ChatPage() {
   const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
   const [editingDisplayName, setEditingDisplayName] = useState(false);
   const [displayNameDraft, setDisplayNameDraft] = useState('');
+  const [isMobileLayout, setIsMobileLayout] = useState(false);
+  const [mobileView, setMobileView] = useState<MobileView>('contacts');
+  const [cameraFacingMode, setCameraFacingMode] = useState<'user' | 'environment'>('user');
 
   useEffect(() => {
     callStateRef.current = callState;
@@ -150,6 +154,23 @@ export default function ChatPage() {
       router.replace('/');
     }
   }, [router]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia('(max-width: 900px)');
+    const syncLayout = () => {
+      setIsMobileLayout(mediaQuery.matches);
+    };
+
+    syncLayout();
+    mediaQuery.addEventListener('change', syncLayout);
+    return () => {
+      mediaQuery.removeEventListener('change', syncLayout);
+    };
+  }, []);
 
   const friendsQuery = useQuery({
     queryKey: queryKeys.friends,
@@ -603,6 +624,25 @@ export default function ChatPage() {
     setCallMediaType((prev) => (prev === nextMediaType ? prev : nextMediaType));
   }, [callState, isCameraEnabled, isRemoteCameraEnabled]);
 
+  useEffect(() => {
+    if (!isMobileLayout) {
+      setMobileView('chat');
+      return;
+    }
+
+    if (callState !== 'idle') {
+      setMobileView('call');
+      return;
+    }
+
+    if (selectedConversationId) {
+      setMobileView('chat');
+      return;
+    }
+
+    setMobileView('contacts');
+  }, [isMobileLayout, callState, selectedConversationId]);
+
   if (!mounted || hasToken === null || meQuery.isLoading) {
     return (
       <div className={styles.center}>
@@ -658,6 +698,7 @@ export default function ChatPage() {
     setIsMuted(false);
     setIsCameraEnabled(false);
     setIsRemoteCameraEnabled(false);
+    setCameraFacingMode('user');
     setCallMediaType('audio');
     setLocalVoiceLevel(0);
     setRemoteVoiceLevel(0);
@@ -718,7 +759,28 @@ export default function ChatPage() {
     }
   }
 
-  async function ensureLocalStream(mediaType: CallMediaType) {
+  async function createVideoTrack(facingMode: 'user' | 'environment') {
+    try {
+      const videoStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: facingMode } },
+        audio: false,
+      });
+      const [videoTrack] = videoStream.getVideoTracks();
+      return videoTrack || null;
+    } catch {
+      const fallbackStream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: false,
+      });
+      const [videoTrack] = fallbackStream.getVideoTracks();
+      return videoTrack || null;
+    }
+  }
+
+  async function ensureLocalStream(
+    mediaType: CallMediaType,
+    facingMode: 'user' | 'environment' = cameraFacingMode,
+  ) {
     const currentStream = localStreamRef.current;
     const shouldHaveVideo = mediaType === 'video';
 
@@ -743,11 +805,7 @@ export default function ChatPage() {
     const stream = localStreamRef.current as MediaStream;
     const hasVideoTrack = stream.getVideoTracks().length > 0;
     if (shouldHaveVideo && !hasVideoTrack) {
-      const videoStream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: false,
-      });
-      const [videoTrack] = videoStream.getVideoTracks();
+      const videoTrack = await createVideoTrack(facingMode);
       if (videoTrack) {
         stream.addTrack(videoTrack);
       }
@@ -1072,7 +1130,7 @@ export default function ChatPage() {
       }
 
       if (nextEnabled) {
-        const stream = await ensureLocalStream('video');
+        const stream = await ensureLocalStream('video', cameraFacingMode);
         const [videoTrack] = stream.getVideoTracks();
         if (videoTrack) {
           await sender.replaceTrack(videoTrack);
@@ -1093,10 +1151,48 @@ export default function ChatPage() {
       }
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = null;
+        localVideoRef.current.load();
       }
       setIsCameraEnabled(false);
       setCallMediaType('audio');
       emitCameraState(false);
+    } catch (error) {
+      handleError(error);
+    }
+  }
+
+  async function onSwitchCameraFacing() {
+    if (!peerConnectionRef.current || callState === 'idle' || !isCameraEnabled) {
+      return;
+    }
+
+    try {
+      const nextFacingMode = cameraFacingMode === 'user' ? 'environment' : 'user';
+      const sender = resolveVideoSender(peerConnectionRef.current);
+      const stream = localStreamRef.current;
+      if (!sender || !stream) {
+        return;
+      }
+
+      const nextTrack = await createVideoTrack(nextFacingMode);
+      if (!nextTrack) {
+        return;
+      }
+
+      await sender.replaceTrack(nextTrack);
+      stream.getVideoTracks().forEach((track) => {
+        track.stop();
+        stream.removeTrack(track);
+      });
+      stream.addTrack(nextTrack);
+
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
+        localVideoRef.current.muted = true;
+        localVideoRef.current.play().catch(() => undefined);
+      }
+
+      setCameraFacingMode(nextFacingMode);
     } catch (error) {
       handleError(error);
     }
@@ -1117,6 +1213,17 @@ export default function ChatPage() {
 
   function onOpenDirect(friendId: string) {
     createDirectMutation.mutate(friendId);
+    if (isMobileLayout) {
+      setMobileView('chat');
+    }
+  }
+
+  function onMobileBack() {
+    if (callState !== 'idle') {
+      return;
+    }
+    setSelectedConversationId(null);
+    setMobileView('contacts');
   }
 
   function getUserLabel(user: {
@@ -1183,9 +1290,130 @@ export default function ChatPage() {
     setChatError(fallback);
   }
 
+  function renderCallPanel(isMobileCallView = false) {
+    return (
+      <div className={`${styles.callPanel} ${isMobileCallView ? styles.mobileCallPanel : ''}`}>
+        <p className={styles.callState}>
+          {callState === 'calling'
+            ? callMediaType === 'video'
+              ? 'Video calling...'
+              : 'Calling...'
+            : callState === 'ringing'
+              ? incomingCall?.media === 'video'
+                ? 'Incoming video call...'
+                : 'Incoming call...'
+              : callState === 'connecting'
+                ? callMediaType === 'video'
+                  ? 'Connecting video...'
+                  : 'Connecting...'
+                : callMediaType === 'video'
+                  ? 'In video call'
+                  : 'In call'}
+        </p>
+        <p className={styles.callDebug}>
+          Socket: {socketConnected ? 'connected' : 'disconnected'} | Peer: {peerConnectionState}{' '}
+          | ICE: {iceConnectionState}
+        </p>
+        <div className={styles.callInlineActions}>
+          <button className={styles.callBtn} onClick={onToggleMute}>
+            {isMuted ? '🎤❌' : '🎤'}
+          </button>
+          <button className={styles.callBtn} onClick={onToggleCamera}>
+            {isCameraEnabled ? '📹' : '📷̶'}
+          </button>
+          <button
+            className={styles.callBtn}
+            onClick={onSwitchCameraFacing}
+            disabled={!isCameraEnabled}
+            title="Switch front/back camera"
+          >
+            🔄
+          </button>
+          <button className={styles.callEndBtn} onClick={onEndCall}>
+            End
+          </button>
+        </div>
+        <div className={styles.meters}>
+          <div className={styles.meterItem}>
+            <span>Mic</span>
+            <div className={styles.meterTrack}>
+              <div className={styles.meterFill} style={{ width: `${localVoiceLevel}%` }} />
+            </div>
+          </div>
+          <div className={styles.meterItem}>
+            <span>Peer</span>
+            <div className={styles.meterTrack}>
+              <div className={styles.meterFillPeer} style={{ width: `${remoteVoiceLevel}%` }} />
+            </div>
+          </div>
+        </div>
+
+        {isCameraEnabled || isRemoteCameraEnabled ? (
+          isMobileCallView ? (
+            <div className={styles.mobileVideoStage}>
+              {isRemoteCameraEnabled ? (
+                <video
+                  ref={remoteVideoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className={styles.mobileRemoteVideo}
+                />
+              ) : (
+                <div className={styles.mobileRemotePlaceholder} />
+              )}
+              <div className={styles.mobileLocalPip}>
+                {isCameraEnabled ? (
+                  <video
+                    ref={localVideoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className={styles.mobileLocalVideo}
+                  />
+                ) : (
+                  <div className={styles.mobileLocalPlaceholder} />
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className={styles.videoGrid}>
+              {isRemoteCameraEnabled ? (
+                <video
+                  ref={remoteVideoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className={styles.remoteVideo}
+                />
+              ) : (
+                <div className={styles.remoteVideoPlaceholder} />
+              )}
+              {isCameraEnabled ? (
+                <video
+                  ref={localVideoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className={styles.localVideo}
+                />
+              ) : (
+                <div className={styles.localVideoPlaceholder} />
+              )}
+            </div>
+          )
+        ) : null}
+      </div>
+    );
+  }
+
   return (
-    <div className={styles.page}>
-      <aside className={styles.sidebar}>
+    <div className={`${styles.page} ${isMobileLayout ? styles.pageMobile : ''}`}>
+      <aside
+        className={`${styles.sidebar} ${
+          isMobileLayout && mobileView !== 'contacts' ? styles.mobilePaneHidden : ''
+        }`}
+      >
         <div className={styles.userBar}>
           <div className={styles.userIdentity}>
             <button
@@ -1317,161 +1545,100 @@ export default function ChatPage() {
         </section>
       </aside>
 
-      <main className={styles.chat}>
-        <div className={styles.chatHeader}>
-          {callState !== 'idle' ? (
-            <div className={styles.callPanel}>
-              <p className={styles.callState}>
-                {callState === 'calling'
-                  ? callMediaType === 'video'
-                    ? 'Video calling...'
-                    : 'Calling...'
-                  : callState === 'ringing'
-                    ? incomingCall?.media === 'video'
-                      ? 'Incoming video call...'
-                      : 'Incoming call...'
-                    : callState === 'connecting'
-                      ? callMediaType === 'video'
-                        ? 'Connecting video...'
-                        : 'Connecting...'
-                      : callMediaType === 'video'
-                        ? 'In video call'
-                        : 'In call'}
-              </p>
-              <p className={styles.callDebug}>
-                Socket: {socketConnected ? 'connected' : 'disconnected'} | Peer:{' '}
-                {peerConnectionState} | ICE: {iceConnectionState}
-              </p>
-              <div className={styles.callInlineActions}>
-                <button className={styles.callBtn} onClick={onToggleMute}>
-                  {isMuted ? '🎤❌' : '🎤'}
-                </button>
-                <button className={styles.callBtn} onClick={onToggleCamera}>
-                  {isCameraEnabled ? '📹' : '📷̶'}
-                </button>
-                <button className={styles.callEndBtn} onClick={onEndCall}>
-                  End
-                </button>
-              </div>
-              <div className={styles.meters}>
-                <div className={styles.meterItem}>
-                  <span>Mic</span>
-                  <div className={styles.meterTrack}>
-                    <div
-                      className={styles.meterFill}
-                      style={{ width: `${localVoiceLevel}%` }}
-                    />
-                  </div>
+      <main
+        className={`${styles.chat} ${
+          isMobileLayout && mobileView === 'contacts' ? styles.mobilePaneHidden : ''
+        }`}
+      >
+        {isMobileLayout && mobileView !== 'call' ? (
+          <div className={styles.mobileChatTop}>
+            <button
+              type="button"
+              className={styles.mobileBackBtn}
+              onClick={onMobileBack}
+              disabled={callState !== 'idle'}
+            >
+              Back
+            </button>
+            <p className={styles.mobileChatTitle}>
+              {activePeer ? getUserLabel(activePeer) : 'Select a conversation'}
+            </p>
+          </div>
+        ) : null}
+
+        {isMobileLayout && mobileView === 'call' ? (
+          <div className={styles.mobileCallScreen}>{renderCallPanel(true)}</div>
+        ) : (
+          <>
+            <div className={styles.chatHeader}>{callState !== 'idle' ? renderCallPanel() : null}</div>
+
+            <div className={styles.messages}>
+              {!selectedConversationId ? <p className={styles.empty}>Select a conversation</p> : null}
+              {messagesQuery.isLoading && selectedConversationId ? (
+                <p className={styles.status}>Loading messages...</p>
+              ) : null}
+              {messagesQuery.isError && selectedConversationId ? (
+                <p className={styles.statusError}>Failed to load messages</p>
+              ) : null}
+              {messagesQuery.data?.items.map((message) => (
+                <div
+                  key={message.id}
+                  className={
+                    message.senderId === currentUser?.id ? styles.messageMine : styles.messageOther
+                  }
+                >
+                  <p>{message.text}</p>
+                  <small>{new Date(message.createdAt).toLocaleTimeString()}</small>
                 </div>
-                <div className={styles.meterItem}>
-                  <span>Peer</span>
-                  <div className={styles.meterTrack}>
-                    <div
-                      className={styles.meterFillPeer}
-                      style={{ width: `${remoteVoiceLevel}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-              {isCameraEnabled || isRemoteCameraEnabled ? (
-                <div className={styles.videoGrid}>
-                  {isRemoteCameraEnabled ? (
-                    <video
-                      ref={remoteVideoRef}
-                      autoPlay
-                      playsInline
-                      muted
-                      className={styles.remoteVideo}
-                    />
-                  ) : (
-                    <div className={styles.remoteVideoPlaceholder} />
-                  )}
-                  {isCameraEnabled ? (
-                    <video
-                      ref={localVideoRef}
-                      autoPlay
-                      playsInline
-                      muted
-                      className={styles.localVideo}
-                    />
-                  ) : (
-                    <div className={styles.localVideoPlaceholder} />
-                  )}
-                </div>
+              ))}
+              {selectedConversationId && !messagesQuery.data?.items.length ? (
+                <p className={styles.empty}>No messages yet</p>
               ) : null}
             </div>
-          ) : null}
-        </div>
 
-        <div className={styles.messages}>
-          {!selectedConversationId ? <p className={styles.empty}>Select a conversation</p> : null}
-          {messagesQuery.isLoading && selectedConversationId ? (
-            <p className={styles.status}>Loading messages...</p>
-          ) : null}
-          {messagesQuery.isError && selectedConversationId ? (
-            <p className={styles.statusError}>Failed to load messages</p>
-          ) : null}
-          {messagesQuery.data?.items.map((message) => (
-            <div
-              key={message.id}
-              className={
-                message.senderId === currentUser?.id ? styles.messageMine : styles.messageOther
-              }
-            >
-              <p>{message.text}</p>
-              <small>{new Date(message.createdAt).toLocaleTimeString()}</small>
-            </div>
-          ))}
-          {selectedConversationId && !messagesQuery.data?.items.length ? (
-            <p className={styles.empty}>No messages yet</p>
-          ) : null}
-        </div>
-
-        <form className={styles.sendForm} onSubmit={onSendMessage}>
-          <div className={styles.composeActions}>
-            <button
-              type="button"
-              className={styles.iconCallBtn}
-              onClick={() => onStartCall('audio')}
-              disabled={!activeConversation || !activePeer || callState !== 'idle' || !socketConnected}
-              title="Start audio call"
-            >
-              <svg
-                className={styles.iconGlyph}
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-              >
-                <path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1-.24 11.4 11.4 0 0 0 3.59.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1C10.85 21 3 13.15 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.24.2 2.46.57 3.59a1 1 0 0 1-.25 1l-2.2 2.2z" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              className={styles.iconCallBtn}
-              onClick={() => onStartCall('video')}
-              disabled={!activeConversation || !activePeer || callState !== 'idle' || !socketConnected}
-              title="Start video call"
-            >
-              <svg
-                className={styles.iconGlyph}
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-              >
-                <path d="M3 6a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1.6l3.6-2A1 1 0 0 1 21 6.5v11a1 1 0 0 1-1.4.9L16 16.4V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6z" />
-              </svg>
-            </button>
-          </div>
-          <input
-            ref={messageInputRef}
-            className={styles.messageInput}
-            placeholder={activeConversation ? 'Write a message...' : 'Open a conversation first'}
-            value={messageText}
-            onChange={(event) => setMessageText(event.target.value)}
-            disabled={!selectedConversationId}
-          />
-          <button type="submit" disabled={!selectedConversationId || !messageText.trim()}>
-            Send
-          </button>
-        </form>
+            <form className={styles.sendForm} onSubmit={onSendMessage}>
+              <div className={styles.composeActions}>
+                <button
+                  type="button"
+                  className={styles.iconCallBtn}
+                  onClick={() => onStartCall('audio')}
+                  disabled={
+                    !activeConversation || !activePeer || callState !== 'idle' || !socketConnected
+                  }
+                  title="Start audio call"
+                >
+                  <svg className={styles.iconGlyph} viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1-.24 11.4 11.4 0 0 0 3.59.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1C10.85 21 3 13.15 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.24.2 2.46.57 3.59a1 1 0 0 1-.25 1l-2.2 2.2z" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className={styles.iconCallBtn}
+                  onClick={() => onStartCall('video')}
+                  disabled={
+                    !activeConversation || !activePeer || callState !== 'idle' || !socketConnected
+                  }
+                  title="Start video call"
+                >
+                  <svg className={styles.iconGlyph} viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M3 6a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1.6l3.6-2A1 1 0 0 1 21 6.5v11a1 1 0 0 1-1.4.9L16 16.4V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6z" />
+                  </svg>
+                </button>
+              </div>
+              <input
+                ref={messageInputRef}
+                className={styles.messageInput}
+                placeholder={activeConversation ? 'Write a message...' : 'Open a conversation first'}
+                value={messageText}
+                onChange={(event) => setMessageText(event.target.value)}
+                disabled={!selectedConversationId}
+              />
+              <button type="submit" disabled={!selectedConversationId || !messageText.trim()}>
+                Send
+              </button>
+            </form>
+          </>
+        )}
 
         {chatError ? <p className={styles.error}>{chatError}</p> : null}
         <audio ref={remoteAudioRef} autoPlay playsInline />
