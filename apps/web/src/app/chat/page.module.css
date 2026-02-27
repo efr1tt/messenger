@@ -355,6 +355,11 @@
   gap: 8px;
 }
 
+.callInlineActions {
+  display: inline-flex;
+  gap: 8px;
+}
+
 .callBtn,
 .callEndBtn {
   border: 0;
@@ -453,6 +458,23 @@
   aspect-ratio: 16 / 9;
 }
 
+.remoteVideoPlaceholder,
+.localVideoPlaceholder {
+  width: 100%;
+  border-radius: 10px;
+  background: #101828;
+  border: 1px solid #344054;
+}
+
+.remoteVideoPlaceholder {
+  aspect-ratio: 16 / 9;
+  min-height: 140px;
+}
+
+.localVideoPlaceholder {
+  aspect-ratio: 16 / 9;
+}
+
 .conversationsRow {
   display: flex;
   gap: 8px;
@@ -491,12 +513,59 @@
 
 .sendForm {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: auto 1fr auto;
   gap: 8px;
+  align-items: center;
 }
 
 .sendForm button {
   padding: 10px 14px;
+}
+
+.composeActions {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.iconCallBtn {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #c9d3ea;
+  border-radius: 10px;
+  background: #193d7d;
+  cursor: pointer;
+  color: #fff;
+  font-size: 18px;
+  line-height: 1;
+  transition: transform 120ms ease, filter 120ms ease;
+}
+
+.iconCallBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.iconCallBtn:not(:disabled):hover {
+  transform: scale(1.08);
+  filter: brightness(1.05);
+}
+
+.iconGlyph {
+  width: 22px;
+  height: 22px;
+  fill: currentColor;
+}
+
+.sendForm button {
+  padding: 11px 16px;
+  transition: transform 120ms ease, filter 120ms ease;
+}
+
+.sendForm button:not(:disabled):hover {
+  transform: scale(1.08);
+  filter: brightness(1.05);
 }
 
 .empty {

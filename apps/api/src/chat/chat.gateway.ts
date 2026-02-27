@@ -55,6 +55,12 @@ type CallEndPayload = {
   conversationId: string;
 };
 
+type CallCameraStatePayload = {
+  toUserId: string;
+  conversationId: string;
+  enabled: boolean;
+};
+
 @WebSocketGateway({
   cors: {
     origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
@@ -221,6 +227,27 @@ export class ChatGateway
     this.server.to(this.getUserRoom(payload.toUserId)).emit('call:reject', {
       fromUserId: socket.data.userId,
       conversationId: payload.conversationId,
+    });
+  }
+
+  @SubscribeMessage('call:camera-state')
+  handleCallCameraState(
+    @ConnectedSocket() socket: AuthenticatedSocket,
+    @MessageBody() payload: CallCameraStatePayload,
+  ) {
+    if (
+      !socket.data.userId ||
+      !payload?.toUserId ||
+      !payload?.conversationId ||
+      typeof payload.enabled !== 'boolean'
+    ) {
+      return;
+    }
+
+    this.server.to(this.getUserRoom(payload.toUserId)).emit('call:camera-state', {
+      fromUserId: socket.data.userId,
+      conversationId: payload.conversationId,
+      enabled: payload.enabled,
     });
   }
 

@@ -48,6 +48,12 @@ export type CallUnavailableEvent = {
   conversationId: string;
 };
 
+export type CallCameraStateEvent = {
+  fromUserId: string;
+  conversationId: string;
+  enabled: boolean;
+};
+
 export function createChatSocket(accessToken: string): Socket {
   return io(API_BASE, {
     auth: {
