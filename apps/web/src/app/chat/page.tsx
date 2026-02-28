@@ -108,8 +108,6 @@ export default function ChatPage() {
   const callPeerUserRef = useRef<string | null>(null);
   const videoSenderRef = useRef<RTCRtpSender | null>(null);
   const pendingIceCandidatesRef = useRef<PendingIceCandidate[]>([]);
-  const localMeterCleanupRef = useRef<(() => void) | null>(null);
-  const remoteMeterCleanupRef = useRef<(() => void) | null>(null);
   const callStateRef = useRef<CallState>('idle');
 
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
@@ -127,10 +125,6 @@ export default function ChatPage() {
   const [callMediaType, setCallMediaType] = useState<CallMediaType>('audio');
   const [isCameraEnabled, setIsCameraEnabled] = useState(false);
   const [isRemoteCameraEnabled, setIsRemoteCameraEnabled] = useState(false);
-  const [localVoiceLevel, setLocalVoiceLevel] = useState(0);
-  const [remoteVoiceLevel, setRemoteVoiceLevel] = useState(0);
-  const [peerConnectionState, setPeerConnectionState] = useState<RTCPeerConnectionState>('new');
-  const [iceConnectionState, setIceConnectionState] = useState<RTCIceConnectionState>('new');
   const [socketConnected, setSocketConnected] = useState(false);
   const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
   const [editingDisplayName, setEditingDisplayName] = useState(false);
@@ -138,6 +132,7 @@ export default function ChatPage() {
   const [isMobileLayout, setIsMobileLayout] = useState(false);
   const [mobileView, setMobileView] = useState<MobileView>('contacts');
   const [cameraFacingMode, setCameraFacingMode] = useState<'user' | 'environment'>('user');
+  const [callDurationSeconds, setCallDurationSeconds] = useState(0);
 
   useEffect(() => {
     callStateRef.current = callState;
@@ -566,6 +561,56 @@ export default function ChatPage() {
     return activeConversation.members.find((member) => member.id !== currentUser.id) || null;
   }, [activeConversation, currentUser]);
 
+  const callPeerLabel = useMemo(() => {
+    const peerId = callPeerUserId || incomingCall?.fromUserId || activePeer?.id;
+    if (!peerId) {
+      return 'SweetyCall';
+    }
+
+    const friend = friendsQuery.data?.find((item) => item.friend.id === peerId)?.friend;
+    if (friend) {
+      return getUserLabel(friend);
+    }
+
+    const conversationPeer = conversationsQuery.data
+      ?.flatMap((conversation) => conversation.members)
+      .find((member) => member.id === peerId);
+    if (conversationPeer) {
+      return getUserLabel(conversationPeer);
+    }
+
+    if (activePeer?.id === peerId) {
+      return getUserLabel(activePeer);
+    }
+
+    return 'Contact';
+  }, [callPeerUserId, incomingCall, activePeer, friendsQuery.data, conversationsQuery.data]);
+
+  const callPeerAvatar = useMemo(() => {
+    const peerId = callPeerUserId || incomingCall?.fromUserId || activePeer?.id;
+    if (!peerId) {
+      return '📞';
+    }
+
+    const friend = friendsQuery.data?.find((item) => item.friend.id === peerId)?.friend;
+    if (friend) {
+      return getAvatarEmoji(friend.avatarKey);
+    }
+
+    const conversationPeer = conversationsQuery.data
+      ?.flatMap((conversation) => conversation.members)
+      .find((member) => member.id === peerId);
+    if (conversationPeer) {
+      return getAvatarEmoji(conversationPeer.avatarKey);
+    }
+
+    if (activePeer?.id === peerId) {
+      return getAvatarEmoji(activePeer.avatarKey);
+    }
+
+    return '🙂';
+  }, [callPeerUserId, incomingCall, activePeer, friendsQuery.data, conversationsQuery.data]);
+
   useEffect(() => {
     if (!selectedConversationId || hasToken !== true) {
       return;
@@ -625,6 +670,23 @@ export default function ChatPage() {
   }, [callState, isCameraEnabled, isRemoteCameraEnabled]);
 
   useEffect(() => {
+    if (callState !== 'in_call') {
+      setCallDurationSeconds(0);
+      return;
+    }
+
+    const startedAt = Date.now();
+    setCallDurationSeconds(0);
+    const timer = window.setInterval(() => {
+      setCallDurationSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [callState]);
+
+  useEffect(() => {
     if (!isMobileLayout) {
       setMobileView('chat');
       return;
@@ -667,16 +729,6 @@ export default function ChatPage() {
       localStreamRef.current = null;
     }
 
-    if (localMeterCleanupRef.current) {
-      localMeterCleanupRef.current();
-      localMeterCleanupRef.current = null;
-    }
-
-    if (remoteMeterCleanupRef.current) {
-      remoteMeterCleanupRef.current();
-      remoteMeterCleanupRef.current = null;
-    }
-
     remoteStreamRef.current = null;
     if (remoteAudioRef.current) {
       remoteAudioRef.current.srcObject = null;
@@ -700,45 +752,6 @@ export default function ChatPage() {
     setIsRemoteCameraEnabled(false);
     setCameraFacingMode('user');
     setCallMediaType('audio');
-    setLocalVoiceLevel(0);
-    setRemoteVoiceLevel(0);
-    setPeerConnectionState('new');
-    setIceConnectionState('new');
-  }
-
-  function startVoiceMeter(stream: MediaStream, onLevel: (value: number) => void) {
-    const audioContext = new AudioContext();
-    const analyser = audioContext.createAnalyser();
-    analyser.fftSize = 2048;
-
-    const source = audioContext.createMediaStreamSource(stream);
-    source.connect(analyser);
-
-    const data = new Uint8Array(analyser.fftSize);
-    let rafId = 0;
-
-    const tick = () => {
-      analyser.getByteTimeDomainData(data);
-      let sum = 0;
-      for (let i = 0; i < data.length; i += 1) {
-        const normalized = (data[i] - 128) / 128;
-        sum += normalized * normalized;
-      }
-
-      const rms = Math.sqrt(sum / data.length);
-      onLevel(Math.min(100, Math.round(rms * 250)));
-      rafId = requestAnimationFrame(tick);
-    };
-
-    rafId = requestAnimationFrame(tick);
-
-    return () => {
-      cancelAnimationFrame(rafId);
-      source.disconnect();
-      analyser.disconnect();
-      audioContext.close();
-      onLevel(0);
-    };
   }
 
   async function flushPendingIceCandidates(conversationId: string) {
@@ -795,11 +808,6 @@ export default function ChatPage() {
       });
 
       localStreamRef.current = stream;
-      if (localMeterCleanupRef.current) {
-        localMeterCleanupRef.current();
-        localMeterCleanupRef.current = null;
-      }
-      localMeterCleanupRef.current = startVoiceMeter(stream, setLocalVoiceLevel);
     }
 
     const stream = localStreamRef.current as MediaStream;
@@ -936,9 +944,6 @@ export default function ChatPage() {
         }
       }
 
-      if (!remoteMeterCleanupRef.current) {
-        remoteMeterCleanupRef.current = startVoiceMeter(remoteStream, setRemoteVoiceLevel);
-      }
       if (remoteAudioRef.current) {
         remoteAudioRef.current
           .play()
@@ -959,7 +964,6 @@ export default function ChatPage() {
     };
 
     pc.onconnectionstatechange = () => {
-      setPeerConnectionState(pc.connectionState);
       if (pc.connectionState === 'connected') {
         setCallState('in_call');
       }
@@ -969,9 +973,7 @@ export default function ChatPage() {
       }
     };
 
-    pc.oniceconnectionstatechange = () => {
-      setIceConnectionState(pc.iceConnectionState);
-    };
+    pc.oniceconnectionstatechange = () => undefined;
 
     setCallPeerUserId(peerUserId);
     setCallConversationId(conversationId);
@@ -1290,62 +1292,84 @@ export default function ChatPage() {
     setChatError(fallback);
   }
 
+  function formatCallDuration(totalSeconds: number) {
+    const minutes = Math.floor(totalSeconds / 60)
+      .toString()
+      .padStart(2, '0');
+    const seconds = (totalSeconds % 60).toString().padStart(2, '0');
+    return `${minutes}:${seconds}`;
+  }
+
+  function getCallStatusLabel() {
+    if (callState === 'calling') {
+      return callMediaType === 'video' ? 'Video calling' : 'Calling';
+    }
+
+    if (callState === 'ringing') {
+      return incomingCall?.media === 'video' ? 'Incoming video call' : 'Incoming call';
+    }
+
+    if (callState === 'connecting') {
+      return callMediaType === 'video' ? 'Connecting video...' : 'Connecting...';
+    }
+
+    if (callState === 'in_call') {
+      const base = callMediaType === 'video' ? 'Video call' : 'Voice call';
+      return `${base} • ${formatCallDuration(callDurationSeconds)}`;
+    }
+
+    return 'Call';
+  }
+
   function renderCallPanel(isMobileCallView = false) {
     return (
       <div className={`${styles.callPanel} ${isMobileCallView ? styles.mobileCallPanel : ''}`}>
-        <p className={styles.callState}>
-          {callState === 'calling'
-            ? callMediaType === 'video'
-              ? 'Video calling...'
-              : 'Calling...'
-            : callState === 'ringing'
-              ? incomingCall?.media === 'video'
-                ? 'Incoming video call...'
-                : 'Incoming call...'
-              : callState === 'connecting'
-                ? callMediaType === 'video'
-                  ? 'Connecting video...'
-                  : 'Connecting...'
-                : callMediaType === 'video'
-                  ? 'In video call'
-                  : 'In call'}
-        </p>
-        <p className={styles.callDebug}>
-          Socket: {socketConnected ? 'connected' : 'disconnected'} | Peer: {peerConnectionState}{' '}
-          | ICE: {iceConnectionState}
-        </p>
+        <div className={styles.callTopBar}>
+          <div className={styles.callInfo}>
+            <span className={styles.callAvatar}>{callPeerAvatar}</span>
+            <div className={styles.callTextGroup}>
+              <p className={styles.callTitle}>{callPeerLabel}</p>
+              <p className={styles.callState}>{getCallStatusLabel()}</p>
+            </div>
+          </div>
+        </div>
         <div className={styles.callInlineActions}>
-          <button className={styles.callBtn} onClick={onToggleMute}>
-            {isMuted ? '🎤❌' : '🎤'}
-          </button>
-          <button className={styles.callBtn} onClick={onToggleCamera}>
-            {isCameraEnabled ? '📹' : '📷̶'}
+          <button
+            className={`${styles.callBtn} ${styles.callIconBtn}`}
+            onClick={onToggleMute}
+            title={isMuted ? 'Unmute microphone' : 'Mute microphone'}
+            aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
+          >
+            <svg className={styles.callGlyph} viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-4a3.5 3.5 0 1 0-7 0v4A3.5 3.5 0 0 0 12 15Zm6-3.5a1 1 0 1 0-2 0 4 4 0 1 1-8 0 1 1 0 1 0-2 0 6 6 0 0 0 5 5.92V20H9.5a1 1 0 1 0 0 2h5a1 1 0 1 0 0-2H13v-2.58A6 6 0 0 0 18 11.5Z" />
+              {isMuted ? <path d="M4.7 3.3a1 1 0 0 0-1.4 1.4l16 16a1 1 0 1 0 1.4-1.4l-16-16Z" /> : null}
+            </svg>
           </button>
           <button
-            className={styles.callBtn}
+            className={`${styles.callBtn} ${styles.callIconBtn}`}
+            onClick={onToggleCamera}
+            title={isCameraEnabled ? 'Turn camera off' : 'Turn camera on'}
+            aria-label={isCameraEnabled ? 'Turn camera off' : 'Turn camera on'}
+          >
+            <svg className={styles.callGlyph} viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 7a3 3 0 0 1 3-3h7a3 3 0 0 1 3 3v1.38l2.55-1.67A1 1 0 0 1 21 7.55v8.9a1 1 0 0 1-1.45.84L17 15.62V17a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7Z" />
+              {!isCameraEnabled ? <path d="M4.7 3.3a1 1 0 0 0-1.4 1.4l16 16a1 1 0 1 0 1.4-1.4l-16-16Z" /> : null}
+            </svg>
+          </button>
+          <button
+            className={`${styles.callBtn} ${styles.callIconBtn}`}
             onClick={onSwitchCameraFacing}
             disabled={!isCameraEnabled}
             title="Switch front/back camera"
+            aria-label="Switch front/back camera"
           >
-            🔄
+            <svg className={styles.callGlyph} viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M7.8 7H16a4 4 0 0 1 3.6 2.2l.15.3 1.36-.7-.3 4.17-3.78-1.8 1.34-.68-.1-.18A2.5 2.5 0 0 0 16 8.5H7.8l1.1 1.1a1 1 0 1 1-1.4 1.4l-2.8-2.8 2.8-2.8a1 1 0 1 1 1.4 1.4L7.8 7Zm8.7 8.5-1.4-1.4a1 1 0 1 1 1.4-1.4l2.8 2.8-2.8 2.8a1 1 0 1 1-1.4-1.4l1.1-1.1H8a4 4 0 0 1-3.6-2.2l-.15-.3-1.36.7.3-4.17 3.78 1.8-1.34.68.1.18A2.5 2.5 0 0 0 8 15.5h8.5Z" />
+            </svg>
           </button>
-          <button className={styles.callEndBtn} onClick={onEndCall}>
+          <button className={styles.callEndBtn} onClick={onEndCall} aria-label="End call">
             End
           </button>
-        </div>
-        <div className={styles.meters}>
-          <div className={styles.meterItem}>
-            <span>Mic</span>
-            <div className={styles.meterTrack}>
-              <div className={styles.meterFill} style={{ width: `${localVoiceLevel}%` }} />
-            </div>
-          </div>
-          <div className={styles.meterItem}>
-            <span>Peer</span>
-            <div className={styles.meterTrack}>
-              <div className={styles.meterFillPeer} style={{ width: `${remoteVoiceLevel}%` }} />
-            </div>
-          </div>
         </div>
 
         {isCameraEnabled || isRemoteCameraEnabled ? (
