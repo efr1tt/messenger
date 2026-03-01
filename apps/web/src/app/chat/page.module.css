@@ -864,6 +864,42 @@
   font-size: 18px;
 }
 
+.callModalHeader {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.callModalAvatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 1px solid #d6def6;
+  background: linear-gradient(180deg, #eef2ff 0%, #e5ecff 100%);
+}
+
+.callModalText {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.callModalEyebrow {
+  font-size: 12px;
+  line-height: 1.2;
+  color: #475467;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.callModalSubtitle {
+  font-size: 14px;
+  line-height: 1.35;
+  color: #667085;
+}
+
 .callModalActions {
   display: flex;
   gap: 8px;

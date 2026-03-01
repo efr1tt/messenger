@@ -89,6 +89,8 @@ const RTC_CONFIG: RTCConfiguration = {
   iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
 };
 
+const OUTGOING_CALL_TIMEOUT_MS = 30_000;
+
 type IncomingCall = {
   fromUserId: string;
   conversationId: string;
@@ -116,6 +118,9 @@ export default function ChatPage() {
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const mobileCallOverlayTimeoutRef = useRef<number | null>(null);
+  const ringtoneAudioContextRef = useRef<AudioContext | null>(null);
+  const ringtoneIntervalRef = useRef<number | null>(null);
+  const outgoingCallTimeoutRef = useRef<number | null>(null);
   const callConversationRef = useRef<string | null>(null);
   const callPeerUserRef = useRef<string | null>(null);
   const videoSenderRef = useRef<RTCRtpSender | null>(null);
@@ -177,6 +182,26 @@ export default function ChatPage() {
     mediaQuery.addEventListener('change', syncLayout);
     return () => {
       mediaQuery.removeEventListener('change', syncLayout);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const unlockAudio = () => {
+      unlockCallAudio().catch(() => undefined);
+    };
+
+    window.addEventListener('pointerdown', unlockAudio, { passive: true });
+    window.addEventListener('keydown', unlockAudio);
+    window.addEventListener('touchstart', unlockAudio, { passive: true });
+
+    return () => {
+      window.removeEventListener('pointerdown', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
     };
   }, []);
 
@@ -700,6 +725,55 @@ export default function ChatPage() {
   }, [callState]);
 
   useEffect(() => {
+    if (callState === 'ringing' && incomingCall) {
+      startCallTone('incoming');
+
+      return () => {
+        stopCallTone();
+      };
+    }
+
+    if (callState === 'calling') {
+      startCallTone('outgoing');
+
+      return () => {
+        stopCallTone();
+      };
+    }
+
+    stopCallTone();
+  }, [callState, incomingCall]);
+
+  useEffect(() => {
+    const shouldStartTimeout =
+      callState === 'calling' &&
+      Boolean(callPeerUserRef.current) &&
+      Boolean(callConversationRef.current);
+
+    if (!shouldStartTimeout) {
+      clearOutgoingCallTimeout();
+      return;
+    }
+
+    clearOutgoingCallTimeout();
+    outgoingCallTimeoutRef.current = window.setTimeout(() => {
+      if (callPeerUserRef.current && callConversationRef.current) {
+        socketRef.current?.emit('call:end', {
+          toUserId: callPeerUserRef.current,
+          conversationId: callConversationRef.current,
+        });
+      }
+
+      setChatError('No answer');
+      cleanupCallState();
+    }, OUTGOING_CALL_TIMEOUT_MS);
+
+    return () => {
+      clearOutgoingCallTimeout();
+    };
+  }, [callState, callPeerUserId, callConversationId]);
+
+  useEffect(() => {
     const shouldAutoHide =
       isMobileLayout &&
       mobileView === 'call' &&
@@ -753,6 +827,8 @@ export default function ChatPage() {
 
   function cleanupCallState() {
     clearMobileCallOverlayTimeout();
+    clearOutgoingCallTimeout();
+    stopCallTone();
 
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
@@ -788,6 +864,13 @@ export default function ChatPage() {
     setIsRemoteCameraEnabled(false);
     setCameraFacingMode('user');
     setCallMediaType('audio');
+  }
+
+  function clearOutgoingCallTimeout() {
+    if (outgoingCallTimeoutRef.current !== null) {
+      window.clearTimeout(outgoingCallTimeoutRef.current);
+      outgoingCallTimeoutRef.current = null;
+    }
   }
 
   function clearMobileCallOverlayTimeout() {
@@ -831,6 +914,140 @@ export default function ChatPage() {
     }
 
     revealMobileCallOverlay();
+  }
+
+  function getAudioContextConstructor() {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+
+    const audioWindow = window as Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext };
+    return audioWindow.AudioContext || audioWindow.webkitAudioContext || null;
+  }
+
+  async function unlockCallAudio() {
+    const AudioContextConstructor = getAudioContextConstructor();
+    if (!AudioContextConstructor) {
+      return;
+    }
+
+    const audioContext = ringtoneAudioContextRef.current ?? new AudioContextConstructor();
+    ringtoneAudioContextRef.current = audioContext;
+
+    if (audioContext.state === 'suspended') {
+      await audioContext.resume();
+    }
+
+    // Prime the destination once after user interaction so future ringtones are not blocked.
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    const now = audioContext.currentTime;
+
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(440, now);
+    gainNode.gain.setValueAtTime(0.0001, now);
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    oscillator.start(now);
+    oscillator.stop(now + 0.01);
+  }
+
+  function playOutgoingCallBurst(audioContext: AudioContext) {
+    const now = audioContext.currentTime + 0.02;
+    const tones = [
+      { start: now, frequency: 440, duration: 0.78, volume: 0.024 },
+      { start: now + 0.9, frequency: 440, duration: 0.78, volume: 0.024 },
+    ];
+
+    tones.forEach(({ start, frequency, duration, volume }) => {
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.type = 'triangle';
+      oscillator.frequency.setValueAtTime(frequency, start);
+
+      gainNode.gain.setValueAtTime(0.0001, start);
+      gainNode.gain.exponentialRampToValueAtTime(volume, start + 0.035);
+      gainNode.gain.setValueAtTime(volume, start + duration - 0.07);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      oscillator.start(start);
+      oscillator.stop(start + duration + 0.05);
+    });
+  }
+
+  function playIncomingCallBurst(audioContext: AudioContext) {
+    const now = audioContext.currentTime + 0.02;
+    const tones = [
+      { start: now, frequency: 660, duration: 0.24, volume: 0.013, type: 'sine' as const },
+      { start: now + 0.18, frequency: 880, duration: 0.26, volume: 0.012, type: 'sine' as const },
+      { start: now + 0.62, frequency: 660, duration: 0.24, volume: 0.013, type: 'sine' as const },
+      { start: now + 0.8, frequency: 880, duration: 0.26, volume: 0.012, type: 'sine' as const },
+    ];
+
+    tones.forEach(({ start, frequency, duration, volume, type }) => {
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.type = type;
+      oscillator.frequency.setValueAtTime(frequency, start);
+
+      gainNode.gain.setValueAtTime(0.0001, start);
+      gainNode.gain.exponentialRampToValueAtTime(volume, start + 0.03);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      oscillator.start(start);
+      oscillator.stop(start + duration + 0.05);
+    });
+  }
+
+  function startCallTone(mode: 'incoming' | 'outgoing') {
+    if (ringtoneIntervalRef.current !== null) {
+      return;
+    }
+
+    const AudioContextConstructor = getAudioContextConstructor();
+    if (!AudioContextConstructor) {
+      return;
+    }
+
+    const audioContext = ringtoneAudioContextRef.current ?? new AudioContextConstructor();
+    ringtoneAudioContextRef.current = audioContext;
+
+    unlockCallAudio().catch(() => undefined);
+    if (mode === 'incoming') {
+      playIncomingCallBurst(audioContext);
+    } else {
+      playOutgoingCallBurst(audioContext);
+    }
+
+    ringtoneIntervalRef.current = window.setInterval(() => {
+      if (audioContext.state === 'suspended') {
+        audioContext.resume().catch(() => undefined);
+      }
+      if (mode === 'incoming') {
+        playIncomingCallBurst(audioContext);
+      } else {
+        playOutgoingCallBurst(audioContext);
+      }
+    }, mode === 'incoming' ? 3600 : 4200);
+  }
+
+  function stopCallTone() {
+    if (ringtoneIntervalRef.current !== null) {
+      window.clearInterval(ringtoneIntervalRef.current);
+      ringtoneIntervalRef.current = null;
+    }
+
+    const audioContext = ringtoneAudioContextRef.current;
+    if (audioContext && audioContext.state === 'running') {
+      audioContext.suspend().catch(() => undefined);
+    }
   }
 
   async function flushPendingIceCandidates(conversationId: string) {
@@ -1887,8 +2104,20 @@ export default function ChatPage() {
       {incomingCall ? (
         <div className={styles.callModalBackdrop}>
           <div className={styles.callModal}>
-            <h3>{incomingCall.media === 'video' ? 'Incoming video call' : 'Incoming audio call'}</h3>
-            <p>From user: {incomingCall.fromUserId}</p>
+            <div className={styles.callModalHeader}>
+              <span className={styles.callModalAvatar}>
+                <img className={styles.avatarImage} src={callPeerAvatarSrc} alt="Caller avatar" />
+              </span>
+              <div className={styles.callModalText}>
+                <p className={styles.callModalEyebrow}>
+                  {incomingCall.media === 'video' ? 'Incoming video call' : 'Incoming audio call'}
+                </p>
+                <h3>{callPeerLabel}</h3>
+                <p className={styles.callModalSubtitle}>
+                  {incomingCall.media === 'video' ? 'Wants to start a video call' : 'Is calling you'}
+                </p>
+              </div>
+            </div>
             <div className={styles.callModalActions}>
               <button className={styles.callBtn} onClick={onAcceptCall}>
                 Accept
