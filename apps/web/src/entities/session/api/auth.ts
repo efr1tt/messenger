@@ -11,6 +11,12 @@ export type RegisterCredentials = AuthCredentials & {
   displayName: string;
 };
 
+export type ForgotPasswordResponse = {
+  success: boolean;
+  message: string;
+  temporaryPassword?: string | null;
+};
+
 export async function register(payload: RegisterCredentials) {
   const { data } = await client.post<AuthResponse>('/auth/register', payload);
   return data;
@@ -25,5 +31,15 @@ export async function logout(refreshToken: string) {
   const { data } = await client.post<{ success: boolean }>('/auth/logout', {
     refreshToken,
   });
+  return data;
+}
+
+export async function forgotPassword(email: string) {
+  const { data } = await client.post<ForgotPasswordResponse>(
+    '/auth/forgot-password',
+    {
+      email,
+    },
+  );
   return data;
 }

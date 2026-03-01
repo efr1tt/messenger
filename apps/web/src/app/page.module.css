@@ -84,6 +84,43 @@
   gap: 14px;
 }
 
+.inlineActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.linkBtn {
+  border: 0;
+  background: transparent;
+  color: #0f4da9;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.recoveryCard {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid #dbe4f1;
+  border-radius: 12px;
+  background: #f8fbff;
+  display: grid;
+  gap: 12px;
+}
+
+.recoveryHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.recoveryCard h3 {
+  font-size: 16px;
+  color: #182034;
+}
+
 .label {
   display: grid;
   gap: 6px;
@@ -119,7 +156,23 @@
   cursor: pointer;
 }
 
+.secondarySubmit {
+  border: 0;
+  border-radius: 10px;
+  padding: 12px;
+  background: #1a4d88;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 .submit:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.secondarySubmit:disabled {
   opacity: 0.7;
   cursor: default;
 }
@@ -141,7 +194,8 @@
   gap: 4px;
 }
 
-.success h2 {
+.success h2,
+.success h3 {
   font-size: 16px;
 }
 

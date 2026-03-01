@@ -4,11 +4,12 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { AccessTokenGuard } from './guards/access-token.guard';
+import { SmtpMailerService } from './smtp-mailer.service';
 
 @Module({
   imports: [PrismaModule, JwtModule.register({})],
   controllers: [AuthController],
-  providers: [AuthService, AccessTokenGuard],
+  providers: [AuthService, AccessTokenGuard, SmtpMailerService],
   exports: [AuthService, JwtModule, AccessTokenGuard],
 })
 export class AuthModule {}

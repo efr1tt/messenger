@@ -1,23 +1,27 @@
 import {
   BadRequestException,
   Injectable,
+  InternalServerErrorException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { User } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
-import { randomUUID } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { AuthTokens, RefreshPayload } from './auth.types';
 import { getAccessSecret, getRefreshSecret } from './jwt.config';
+import { SmtpMailerService } from './smtp-mailer.service';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly smtpMailerService: SmtpMailerService,
   ) {}
 
   async register(dto: RegisterDto, userAgent?: string, ipAddress?: string) {
@@ -154,6 +158,65 @@ export class AuthService {
     return { success: true };
   }
 
+  async forgotPassword(dto: ForgotPasswordDto) {
+    const email = dto.email.trim().toLowerCase();
+    const genericMessage =
+      'If an account with this email exists, a temporary password has been sent.';
+
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+      },
+    });
+
+    if (!user) {
+      return {
+        success: true,
+        message: genericMessage,
+      };
+    }
+
+    const temporaryPassword = this.generateTemporaryPassword();
+    const delivery = await this.smtpMailerService.sendTemporaryPasswordEmail({
+      to: user.email,
+      displayName: user.displayName,
+      temporaryPassword,
+    });
+
+    const passwordHash = await bcrypt.hash(temporaryPassword, 12);
+
+    try {
+      await this.prisma.$transaction([
+        this.prisma.user.update({
+          where: { id: user.id },
+          data: { passwordHash },
+        }),
+        this.prisma.session.updateMany({
+          where: {
+            userId: user.id,
+            revokedAt: null,
+          },
+          data: {
+            revokedAt: new Date(),
+          },
+        }),
+      ]);
+    } catch {
+      throw new InternalServerErrorException('Failed to reset password');
+    }
+
+    return {
+      success: true,
+      message: delivery.previewOnly
+        ? 'SMTP is not configured. Use the temporary password below for local development.'
+        : genericMessage,
+      temporaryPassword: delivery.previewOnly ? temporaryPassword : null,
+    };
+  }
+
   private async createSessionAndTokens(
     user: User,
     userAgent?: string,
@@ -282,5 +345,10 @@ export class AuthService {
     if (unit === 'm') return amount * 60;
     if (unit === 'h') return amount * 60 * 60;
     return amount * 60 * 60 * 24;
+  }
+
+  private generateTemporaryPassword() {
+    const randomPart = randomBytes(6).toString('base64url');
+    return `Swt-${randomPart}9a`;
   }
 }

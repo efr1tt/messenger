@@ -1,6 +1,7 @@
 import { Body, Controller, HttpCode, Post, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import { AuthService } from './auth.service';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { LogoutDto } from './dto/logout.dto';
 import { RefreshDto } from './dto/refresh.dto';
@@ -19,6 +20,12 @@ export class AuthController {
   @HttpCode(200)
   login(@Body() dto: LoginDto, @Req() req: Request) {
     return this.authService.login(dto, this.getUserAgent(req), req.ip);
+  }
+
+  @Post('forgot-password')
+  @HttpCode(200)
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(dto);
   }
 
   @Post('refresh')
