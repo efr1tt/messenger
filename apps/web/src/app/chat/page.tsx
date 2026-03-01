@@ -61,18 +61,29 @@ const queryKeys = {
 };
 
 const AVATAR_OPTIONS = [
-  { key: 'none', emoji: '🙂', label: 'Default' },
-  { key: 'cool-cat', emoji: '😼', label: 'Cool Cat' },
-  { key: 'doge', emoji: '🐶', label: 'Doge' },
-  { key: 'froggy', emoji: '🐸', label: 'Froggy' },
-  { key: 'capy', emoji: '🦫', label: 'Capy' },
-  { key: 'shiba', emoji: '🐕', label: 'Shiba' },
-  { key: 'alien', emoji: '👽', label: 'Alien' },
-  { key: 'robot', emoji: '🤖', label: 'Robot' },
-  { key: 'banana', emoji: '🍌', label: 'Banana' },
-  { key: 'penguin', emoji: '🐧', label: 'Penguin' },
-  { key: 'panda', emoji: '🐼', label: 'Panda' },
+  { key: 'none', label: 'Sky', src: '/avatars/avatar-1.svg' },
+  { key: 'orbit', label: 'Orbit', src: '/avatars/avatar-2.svg' },
+  { key: 'ember', label: 'Ember', src: '/avatars/avatar-3.svg' },
+  { key: 'mint', label: 'Mint', src: '/avatars/avatar-4.svg' },
+  { key: 'neon', label: 'Neon', src: '/avatars/avatar-5.svg' },
+  { key: 'sunset', label: 'Sunset', src: '/avatars/avatar-6.svg' },
+  { key: 'citrus', label: 'Citrus', src: '/avatars/avatar-7.svg' },
+  { key: 'midnight', label: 'Midnight', src: '/avatars/avatar-8.svg' },
+  { key: 'coral', label: 'Coral', src: '/avatars/avatar-9.svg' },
 ] as const;
+
+const LEGACY_AVATAR_MAP: Record<string, (typeof AVATAR_OPTIONS)[number]['key']> = {
+  classic: 'orbit',
+  cool: 'ember',
+  smirk: 'mint',
+  calm: 'neon',
+  wink: 'sunset',
+  monocle: 'citrus',
+  nerd: 'midnight',
+  mustache: 'coral',
+  halo: 'ember',
+  thinking: 'mint',
+};
 
 const RTC_CONFIG: RTCConfiguration = {
   iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
@@ -104,6 +115,7 @@ export default function ChatPage() {
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const mobileCallOverlayTimeoutRef = useRef<number | null>(null);
   const callConversationRef = useRef<string | null>(null);
   const callPeerUserRef = useRef<string | null>(null);
   const videoSenderRef = useRef<RTCRtpSender | null>(null);
@@ -131,6 +143,7 @@ export default function ChatPage() {
   const [displayNameDraft, setDisplayNameDraft] = useState('');
   const [isMobileLayout, setIsMobileLayout] = useState(false);
   const [mobileView, setMobileView] = useState<MobileView>('contacts');
+  const [isMobileCallOverlayVisible, setIsMobileCallOverlayVisible] = useState(true);
   const [cameraFacingMode, setCameraFacingMode] = useState<'user' | 'environment'>('user');
   const [callDurationSeconds, setCallDurationSeconds] = useState(0);
 
@@ -586,29 +599,29 @@ export default function ChatPage() {
     return 'Contact';
   }, [callPeerUserId, incomingCall, activePeer, friendsQuery.data, conversationsQuery.data]);
 
-  const callPeerAvatar = useMemo(() => {
+  const callPeerAvatarSrc = useMemo(() => {
     const peerId = callPeerUserId || incomingCall?.fromUserId || activePeer?.id;
     if (!peerId) {
-      return '📞';
+      return getAvatarSrc(null);
     }
 
     const friend = friendsQuery.data?.find((item) => item.friend.id === peerId)?.friend;
     if (friend) {
-      return getAvatarEmoji(friend.avatarKey);
+      return getAvatarSrc(friend.avatarKey);
     }
 
     const conversationPeer = conversationsQuery.data
       ?.flatMap((conversation) => conversation.members)
       .find((member) => member.id === peerId);
     if (conversationPeer) {
-      return getAvatarEmoji(conversationPeer.avatarKey);
+      return getAvatarSrc(conversationPeer.avatarKey);
     }
 
     if (activePeer?.id === peerId) {
-      return getAvatarEmoji(activePeer.avatarKey);
+      return getAvatarSrc(activePeer.avatarKey);
     }
 
-    return '🙂';
+    return getAvatarSrc(null);
   }, [callPeerUserId, incomingCall, activePeer, friendsQuery.data, conversationsQuery.data]);
 
   useEffect(() => {
@@ -657,7 +670,7 @@ export default function ChatPage() {
       remoteVideoRef.current.srcObject = remoteStreamRef.current;
       remoteVideoRef.current.play().catch(() => undefined);
     }
-  }, [callState, callMediaType, isCameraEnabled, isRemoteCameraEnabled]);
+  }, [callState, callMediaType, isCameraEnabled, isRemoteCameraEnabled, isMobileLayout, mobileView]);
 
   useEffect(() => {
     if (callState === 'idle') {
@@ -685,6 +698,27 @@ export default function ChatPage() {
       window.clearInterval(timer);
     };
   }, [callState]);
+
+  useEffect(() => {
+    const shouldAutoHide =
+      isMobileLayout &&
+      mobileView === 'call' &&
+      callMediaType === 'video' &&
+      callState === 'in_call';
+
+    if (!shouldAutoHide) {
+      clearMobileCallOverlayTimeout();
+      setIsMobileCallOverlayVisible(true);
+      return;
+    }
+
+    setIsMobileCallOverlayVisible(true);
+    scheduleMobileCallOverlayHide();
+
+    return () => {
+      clearMobileCallOverlayTimeout();
+    };
+  }, [isMobileLayout, mobileView, callMediaType, callState]);
 
   useEffect(() => {
     if (!isMobileLayout) {
@@ -718,6 +752,8 @@ export default function ChatPage() {
   }
 
   function cleanupCallState() {
+    clearMobileCallOverlayTimeout();
+
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
@@ -752,6 +788,49 @@ export default function ChatPage() {
     setIsRemoteCameraEnabled(false);
     setCameraFacingMode('user');
     setCallMediaType('audio');
+  }
+
+  function clearMobileCallOverlayTimeout() {
+    if (mobileCallOverlayTimeoutRef.current !== null) {
+      window.clearTimeout(mobileCallOverlayTimeoutRef.current);
+      mobileCallOverlayTimeoutRef.current = null;
+    }
+  }
+
+  function scheduleMobileCallOverlayHide() {
+    clearMobileCallOverlayTimeout();
+
+    mobileCallOverlayTimeoutRef.current = window.setTimeout(() => {
+      setIsMobileCallOverlayVisible(false);
+      mobileCallOverlayTimeoutRef.current = null;
+    }, 2400);
+  }
+
+  function revealMobileCallOverlay() {
+    setIsMobileCallOverlayVisible(true);
+
+    if (
+      isMobileLayout &&
+      mobileView === 'call' &&
+      callMediaType === 'video' &&
+      callState === 'in_call'
+    ) {
+      scheduleMobileCallOverlayHide();
+    }
+  }
+
+  function onMobileCallSurfaceTap() {
+    if (!(isMobileLayout && mobileView === 'call' && callMediaType === 'video')) {
+      return;
+    }
+
+    if (isMobileCallOverlayVisible) {
+      clearMobileCallOverlayTimeout();
+      setIsMobileCallOverlayVisible(false);
+      return;
+    }
+
+    revealMobileCallOverlay();
   }
 
   async function flushPendingIceCandidates(conversationId: string) {
@@ -1236,9 +1315,19 @@ export default function ChatPage() {
     return user.displayName || user.username || user.email || 'Unknown user';
   }
 
-  function getAvatarEmoji(avatarKey?: string | null) {
-    const option = AVATAR_OPTIONS.find((item) => item.key === (avatarKey || 'none'));
-    return option?.emoji || '🙂';
+  function getAvatarOption(avatarKey?: string | null) {
+    const normalizedKey = avatarKey ? (LEGACY_AVATAR_MAP[avatarKey] ?? avatarKey) : 'none';
+    const option = AVATAR_OPTIONS.find((item) => item.key === normalizedKey);
+    return option || AVATAR_OPTIONS[0];
+  }
+
+  function getAvatarSrc(avatarKey?: string | null) {
+    return getAvatarOption(avatarKey).src;
+  }
+
+  function renderAvatar(avatarKey?: string | null, altText?: string) {
+    const option = getAvatarOption(avatarKey);
+    return <img className={styles.avatarImage} src={option.src} alt={altText || option.label} />;
   }
 
   function onSelectAvatar(avatarKey: string) {
@@ -1322,111 +1411,232 @@ export default function ChatPage() {
   }
 
   function renderCallPanel(isMobileCallView = false) {
-    return (
-      <div className={`${styles.callPanel} ${isMobileCallView ? styles.mobileCallPanel : ''}`}>
-        <div className={styles.callTopBar}>
-          <div className={styles.callInfo}>
-            <span className={styles.callAvatar}>{callPeerAvatar}</span>
-            <div className={styles.callTextGroup}>
-              <p className={styles.callTitle}>{callPeerLabel}</p>
-              <p className={styles.callState}>{getCallStatusLabel()}</p>
-            </div>
-          </div>
-        </div>
-        <div className={styles.callInlineActions}>
-          <button
-            className={`${styles.callBtn} ${styles.callIconBtn}`}
-            onClick={onToggleMute}
-            title={isMuted ? 'Unmute microphone' : 'Mute microphone'}
-            aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
-          >
-            <svg className={styles.callGlyph} viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-4a3.5 3.5 0 1 0-7 0v4A3.5 3.5 0 0 0 12 15Zm6-3.5a1 1 0 1 0-2 0 4 4 0 1 1-8 0 1 1 0 1 0-2 0 6 6 0 0 0 5 5.92V20H9.5a1 1 0 1 0 0 2h5a1 1 0 1 0 0-2H13v-2.58A6 6 0 0 0 18 11.5Z" />
-              {isMuted ? <path d="M4.7 3.3a1 1 0 0 0-1.4 1.4l16 16a1 1 0 1 0 1.4-1.4l-16-16Z" /> : null}
-            </svg>
-          </button>
-          <button
-            className={`${styles.callBtn} ${styles.callIconBtn}`}
-            onClick={onToggleCamera}
-            title={isCameraEnabled ? 'Turn camera off' : 'Turn camera on'}
-            aria-label={isCameraEnabled ? 'Turn camera off' : 'Turn camera on'}
-          >
-            <svg className={styles.callGlyph} viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 7a3 3 0 0 1 3-3h7a3 3 0 0 1 3 3v1.38l2.55-1.67A1 1 0 0 1 21 7.55v8.9a1 1 0 0 1-1.45.84L17 15.62V17a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7Z" />
-              {!isCameraEnabled ? <path d="M4.7 3.3a1 1 0 0 0-1.4 1.4l16 16a1 1 0 1 0 1.4-1.4l-16-16Z" /> : null}
-            </svg>
-          </button>
-          <button
-            className={`${styles.callBtn} ${styles.callIconBtn}`}
-            onClick={onSwitchCameraFacing}
-            disabled={!isCameraEnabled}
-            title="Switch front/back camera"
-            aria-label="Switch front/back camera"
-          >
-            <svg className={styles.callGlyph} viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M7.8 7H16a4 4 0 0 1 3.6 2.2l.15.3 1.36-.7-.3 4.17-3.78-1.8 1.34-.68-.1-.18A2.5 2.5 0 0 0 16 8.5H7.8l1.1 1.1a1 1 0 1 1-1.4 1.4l-2.8-2.8 2.8-2.8a1 1 0 1 1 1.4 1.4L7.8 7Zm8.7 8.5-1.4-1.4a1 1 0 1 1 1.4-1.4l2.8 2.8-2.8 2.8a1 1 0 1 1-1.4-1.4l1.1-1.1H8a4 4 0 0 1-3.6-2.2l-.15-.3-1.36.7.3-4.17 3.78 1.8-1.34.68.1.18A2.5 2.5 0 0 0 8 15.5h8.5Z" />
-            </svg>
-          </button>
-          <button className={styles.callEndBtn} onClick={onEndCall} aria-label="End call">
-            End
-          </button>
-        </div>
+    const isMobileVideoCall = isMobileCallView && callMediaType === 'video';
+    const showMobileOverlay = !isMobileVideoCall || isMobileCallOverlayVisible;
 
-        {isCameraEnabled || isRemoteCameraEnabled ? (
-          isMobileCallView ? (
-            <div className={styles.mobileVideoStage}>
-              {isRemoteCameraEnabled ? (
-                <video
-                  ref={remoteVideoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className={styles.mobileRemoteVideo}
-                />
-              ) : (
-                <div className={styles.mobileRemotePlaceholder} />
-              )}
-              <div className={styles.mobileLocalPip}>
-                {isCameraEnabled ? (
-                  <video
-                    ref={localVideoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className={styles.mobileLocalVideo}
-                  />
-                ) : (
-                  <div className={styles.mobileLocalPlaceholder} />
-                )}
+    return (
+      <div
+        className={`${styles.callPanel} ${isMobileCallView ? styles.mobileCallPanel : ''} ${
+          isMobileVideoCall ? styles.mobileCallPanelVideo : ''
+        }`}
+      >
+        {isMobileVideoCall ? (
+          <div className={styles.mobileVideoStage} onClick={onMobileCallSurfaceTap}>
+            {isRemoteCameraEnabled ? (
+              <video
+                ref={remoteVideoRef}
+                autoPlay
+                playsInline
+                muted
+                className={styles.mobileRemoteVideo}
+              />
+            ) : (
+              <div className={styles.mobileRemotePlaceholder}>
+                <span className={styles.mobileRemoteAvatar}>
+                  <img className={styles.avatarImage} src={callPeerAvatarSrc} alt="Call avatar" />
+                </span>
+              </div>
+            )}
+
+            <div
+              className={`${styles.mobileCallOverlay} ${
+                showMobileOverlay ? styles.mobileCallOverlayVisible : styles.mobileCallOverlayHidden
+              }`}
+            >
+              <div className={styles.mobileCallOverlayTop}>
+                <div className={styles.callTopBar}>
+                  <div className={styles.callInfo}>
+                    <span className={styles.callAvatar}>
+                      <img className={styles.avatarImage} src={callPeerAvatarSrc} alt="Call avatar" />
+                    </span>
+                    <div className={styles.callTextGroup}>
+                      <p className={styles.callTitle}>{callPeerLabel}</p>
+                      <p className={styles.callState}>{getCallStatusLabel()}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                className={styles.mobileCallOverlayBottom}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className={styles.mobileCallActions}>
+                  <button
+                    className={`${styles.callBtn} ${styles.callIconBtn}`}
+                    onClick={onToggleMute}
+                    title={isMuted ? 'Unmute microphone' : 'Mute microphone'}
+                    aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
+                  >
+                    <svg className={styles.callGlyph} viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-4a3.5 3.5 0 1 0-7 0v4A3.5 3.5 0 0 0 12 15Zm6-3.5a1 1 0 1 0-2 0 4 4 0 1 1-8 0 1 1 0 1 0-2 0 6 6 0 0 0 5 5.92V20H9.5a1 1 0 1 0 0 2h5a1 1 0 1 0 0-2H13v-2.58A6 6 0 0 0 18 11.5Z" />
+                      {isMuted ? (
+                        <path d="M4.7 3.3a1 1 0 0 0-1.4 1.4l16 16a1 1 0 1 0 1.4-1.4l-16-16Z" />
+                      ) : null}
+                    </svg>
+                  </button>
+                  <button
+                    className={`${styles.callBtn} ${styles.callIconBtn}`}
+                    onClick={onToggleCamera}
+                    title={isCameraEnabled ? 'Turn camera off' : 'Turn camera on'}
+                    aria-label={isCameraEnabled ? 'Turn camera off' : 'Turn camera on'}
+                  >
+                    <svg className={styles.callGlyph} viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M4 7a3 3 0 0 1 3-3h7a3 3 0 0 1 3 3v1.38l2.55-1.67A1 1 0 0 1 21 7.55v8.9a1 1 0 0 1-1.45.84L17 15.62V17a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7Z" />
+                      {!isCameraEnabled ? (
+                        <path d="M4.7 3.3a1 1 0 0 0-1.4 1.4l16 16a1 1 0 1 0 1.4-1.4l-16-16Z" />
+                      ) : null}
+                    </svg>
+                  </button>
+                  <button
+                    className={`${styles.callBtn} ${styles.callIconBtn}`}
+                    onClick={onSwitchCameraFacing}
+                    disabled={!isCameraEnabled}
+                    title="Switch front/back camera"
+                    aria-label="Switch front/back camera"
+                  >
+                    <svg className={styles.callGlyph} viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M7.8 7H16a4 4 0 0 1 3.6 2.2l.15.3 1.36-.7-.3 4.17-3.78-1.8 1.34-.68-.1-.18A2.5 2.5 0 0 0 16 8.5H7.8l1.1 1.1a1 1 0 1 1-1.4 1.4l-2.8-2.8 2.8-2.8a1 1 0 1 1 1.4 1.4L7.8 7Zm8.7 8.5-1.4-1.4a1 1 0 1 1 1.4-1.4l2.8 2.8-2.8 2.8a1 1 0 1 1-1.4-1.4l1.1-1.1H8a4 4 0 0 1-3.6-2.2l-.15-.3-1.36.7.3-4.17 3.78 1.8-1.34.68.1.18A2.5 2.5 0 0 0 8 15.5h8.5Z" />
+                    </svg>
+                  </button>
+                  <button className={styles.callEndBtn} onClick={onEndCall} aria-label="End call">
+                    End
+                  </button>
+                </div>
               </div>
             </div>
-          ) : (
-            <div className={styles.videoGrid}>
-              {isRemoteCameraEnabled ? (
-                <video
-                  ref={remoteVideoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className={styles.remoteVideo}
-                />
-              ) : (
-                <div className={styles.remoteVideoPlaceholder} />
-              )}
+
+            <div
+              className={`${styles.mobileLocalPip} ${
+                showMobileOverlay ? styles.mobileLocalPipRaised : ''
+              }`}
+            >
               {isCameraEnabled ? (
                 <video
                   ref={localVideoRef}
                   autoPlay
                   playsInline
                   muted
-                  className={styles.localVideo}
+                  className={styles.mobileLocalVideo}
                 />
               ) : (
-                <div className={styles.localVideoPlaceholder} />
+                <div className={styles.mobileLocalPlaceholder} />
               )}
             </div>
-          )
-        ) : null}
+          </div>
+        ) : (
+          <>
+            <div className={styles.callTopBar}>
+              <div className={styles.callInfo}>
+                <span className={styles.callAvatar}>
+                  <img className={styles.avatarImage} src={callPeerAvatarSrc} alt="Call avatar" />
+                </span>
+                <div className={styles.callTextGroup}>
+                  <p className={styles.callTitle}>{callPeerLabel}</p>
+                  <p className={styles.callState}>{getCallStatusLabel()}</p>
+                </div>
+              </div>
+            </div>
+            <div className={styles.callInlineActions}>
+              <button
+                className={`${styles.callBtn} ${styles.callIconBtn}`}
+                onClick={onToggleMute}
+                title={isMuted ? 'Unmute microphone' : 'Mute microphone'}
+                aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
+              >
+                <svg className={styles.callGlyph} viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-4a3.5 3.5 0 1 0-7 0v4A3.5 3.5 0 0 0 12 15Zm6-3.5a1 1 0 1 0-2 0 4 4 0 1 1-8 0 1 1 0 1 0-2 0 6 6 0 0 0 5 5.92V20H9.5a1 1 0 1 0 0 2h5a1 1 0 1 0 0-2H13v-2.58A6 6 0 0 0 18 11.5Z" />
+                  {isMuted ? (
+                    <path d="M4.7 3.3a1 1 0 0 0-1.4 1.4l16 16a1 1 0 1 0 1.4-1.4l-16-16Z" />
+                  ) : null}
+                </svg>
+              </button>
+              <button
+                className={`${styles.callBtn} ${styles.callIconBtn}`}
+                onClick={onToggleCamera}
+                title={isCameraEnabled ? 'Turn camera off' : 'Turn camera on'}
+                aria-label={isCameraEnabled ? 'Turn camera off' : 'Turn camera on'}
+              >
+                <svg className={styles.callGlyph} viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 7a3 3 0 0 1 3-3h7a3 3 0 0 1 3 3v1.38l2.55-1.67A1 1 0 0 1 21 7.55v8.9a1 1 0 0 1-1.45.84L17 15.62V17a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7Z" />
+                  {!isCameraEnabled ? (
+                    <path d="M4.7 3.3a1 1 0 0 0-1.4 1.4l16 16a1 1 0 1 0 1.4-1.4l-16-16Z" />
+                  ) : null}
+                </svg>
+              </button>
+              <button
+                className={`${styles.callBtn} ${styles.callIconBtn}`}
+                onClick={onSwitchCameraFacing}
+                disabled={!isCameraEnabled}
+                title="Switch front/back camera"
+                aria-label="Switch front/back camera"
+              >
+                <svg className={styles.callGlyph} viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M7.8 7H16a4 4 0 0 1 3.6 2.2l.15.3 1.36-.7-.3 4.17-3.78-1.8 1.34-.68-.1-.18A2.5 2.5 0 0 0 16 8.5H7.8l1.1 1.1a1 1 0 1 1-1.4 1.4l-2.8-2.8 2.8-2.8a1 1 0 1 1 1.4 1.4L7.8 7Zm8.7 8.5-1.4-1.4a1 1 0 1 1 1.4-1.4l2.8 2.8-2.8 2.8a1 1 0 1 1-1.4-1.4l1.1-1.1H8a4 4 0 0 1-3.6-2.2l-.15-.3-1.36.7.3-4.17 3.78 1.8-1.34.68.1.18A2.5 2.5 0 0 0 8 15.5h8.5Z" />
+                </svg>
+              </button>
+              <button className={styles.callEndBtn} onClick={onEndCall} aria-label="End call">
+                End
+              </button>
+            </div>
+
+            {isCameraEnabled || isRemoteCameraEnabled ? (
+              isMobileCallView ? (
+                <div className={styles.mobileVideoStage}>
+                  {isRemoteCameraEnabled ? (
+                    <video
+                      ref={remoteVideoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className={styles.mobileRemoteVideo}
+                    />
+                  ) : (
+                    <div className={styles.mobileRemotePlaceholder} />
+                  )}
+                  <div className={styles.mobileLocalPip}>
+                    {isCameraEnabled ? (
+                      <video
+                        ref={localVideoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        className={styles.mobileLocalVideo}
+                      />
+                    ) : (
+                      <div className={styles.mobileLocalPlaceholder} />
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className={styles.videoGrid}>
+                  {isRemoteCameraEnabled ? (
+                    <video
+                      ref={remoteVideoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className={styles.remoteVideo}
+                    />
+                  ) : (
+                    <div className={styles.remoteVideoPlaceholder} />
+                  )}
+                  {isCameraEnabled ? (
+                    <video
+                      ref={localVideoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className={styles.localVideo}
+                    />
+                  ) : (
+                    <div className={styles.localVideoPlaceholder} />
+                  )}
+                </div>
+              )
+            ) : null}
+          </>
+        )}
       </div>
     );
   }
@@ -1445,7 +1655,7 @@ export default function ChatPage() {
               onClick={() => setAvatarPickerOpen((prev) => !prev)}
               title="Choose avatar"
             >
-              <span>{getAvatarEmoji(currentUser?.avatarKey)}</span>
+              {renderAvatar(currentUser?.avatarKey, 'Your avatar')}
             </button>
             {editingDisplayName ? (
               <div className={styles.displayNameEditor}>
@@ -1476,7 +1686,7 @@ export default function ChatPage() {
                     onClick={() => onSelectAvatar(option.key)}
                     title={option.label}
                   >
-                    {option.emoji}
+                    <img className={styles.avatarImage} src={option.src} alt={option.label} />
                   </button>
                 ))}
               </div>
@@ -1501,7 +1711,9 @@ export default function ChatPage() {
             {searchQuery.data?.map((user) => (
               <div key={user.id} className={styles.listItem}>
                 <span className={styles.userLine}>
-                  <span className={styles.avatarBubble}>{getAvatarEmoji(user.avatarKey)}</span>
+                  <span className={styles.avatarBubble}>
+                    {renderAvatar(user.avatarKey, 'User avatar')}
+                  </span>
                   <span>{getUserLabel(user)}</span>
                 </span>
                 <button onClick={() => sendRequestMutation.mutate(user.id)}>Request</button>
@@ -1520,7 +1732,9 @@ export default function ChatPage() {
               {requestsQuery.data?.map((item) => (
                 <div key={item.id} className={styles.listItemCol}>
                   <span className={styles.userLine}>
-                    <span className={styles.avatarBubble}>{getAvatarEmoji(item.from.avatarKey)}</span>
+                    <span className={styles.avatarBubble}>
+                      {renderAvatar(item.from.avatarKey, 'User avatar')}
+                    </span>
                     <span>{getUserLabel(item.from)}</span>
                   </span>
                   <div className={styles.actions}>
@@ -1552,7 +1766,9 @@ export default function ChatPage() {
                     title="Open chat"
                   >
                     <span className={styles.friendAvatarWrap}>
-                      <span className={styles.avatarBubble}>{getAvatarEmoji(item.friend.avatarKey)}</span>
+                      <span className={styles.avatarBubble}>
+                        {renderAvatar(item.friend.avatarKey, 'User avatar')}
+                      </span>
                       <span
                         className={item.isOnline ? styles.presenceDotOnline : styles.presenceDotOffline}
                       />
@@ -1572,7 +1788,7 @@ export default function ChatPage() {
       <main
         className={`${styles.chat} ${
           isMobileLayout && mobileView === 'contacts' ? styles.mobilePaneHidden : ''
-        }`}
+        } ${isMobileLayout && mobileView === 'call' ? styles.mobileCallMain : ''}`}
       >
         {isMobileLayout && mobileView !== 'call' ? (
           <div className={styles.mobileChatTop}>

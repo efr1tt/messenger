@@ -1,0 +1,20 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff9ad5"/>
+      <stop offset="1" stop-color="#7ab7ff"/>
+    </linearGradient>
+    <linearGradient id="hair" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff6fa7"/>
+      <stop offset="1" stop-color="#b06bff"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="256" height="256" rx="64" fill="url(#bg)"/>
+  <circle cx="128" cy="116" r="56" fill="#ffd9c2"/>
+  <path d="M64 112c8-40 48-72 88-68 28 3 48 20 60 44 4 8 6 18 4 28-20-14-40-24-76-24-32 0-56 6-76 20z" fill="url(#hair)"/>
+  <circle cx="104" cy="120" r="20" stroke="#3d3d3d" stroke-width="6" fill="#bcdfff"/>
+  <circle cx="152" cy="120" r="20" stroke="#3d3d3d" stroke-width="6" fill="#bcdfff"/>
+  <rect x="122" y="116" width="12" height="8" rx="4" fill="#3d3d3d"/>
+  <path d="M64 190c18-20 40-30 64-30s46 10 64 30" fill="#f7b37a"/>
+  <path d="M48 206c22-30 50-42 80-42s58 12 80 42" stroke="#f4a460" stroke-width="18" stroke-linecap="round"/>
+</svg>
