@@ -1,6 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:3001';
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 const DEFAULT_SOCKET_PATH = '/api/socket.io';
 
 export type MessageNewEvent = {
@@ -56,10 +56,16 @@ export type CallCameraStateEvent = {
 };
 
 function getSocketConfig() {
+  const browserOrigin =
+    typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
   const fallback = {
-    url: API_BASE,
+    url: browserOrigin,
     path: DEFAULT_SOCKET_PATH,
   };
+
+  if (!API_BASE) {
+    return fallback;
+  }
 
   try {
     const parsed = new URL(API_BASE);
