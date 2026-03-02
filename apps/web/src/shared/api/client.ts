@@ -15,7 +15,7 @@ type RetryableConfig = InternalAxiosRequestConfig & {
   _retry?: boolean;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:3001';
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || '/api';
 
 export const client: AxiosInstance = axios.create({
   baseURL: API_BASE,

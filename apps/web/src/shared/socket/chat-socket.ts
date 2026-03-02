@@ -1,6 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:3001';
+const DEFAULT_SOCKET_PATH = '/api/socket.io';
 
 export type MessageNewEvent = {
   conversationId: string;
@@ -54,8 +55,32 @@ export type CallCameraStateEvent = {
   enabled: boolean;
 };
 
+function getSocketConfig() {
+  const fallback = {
+    url: API_BASE,
+    path: DEFAULT_SOCKET_PATH,
+  };
+
+  try {
+    const parsed = new URL(API_BASE);
+    const normalizedPath = parsed.pathname.endsWith('/')
+      ? parsed.pathname.slice(0, -1)
+      : parsed.pathname;
+
+    return {
+      url: parsed.origin,
+      path: `${normalizedPath || '/api'}/socket.io`,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
 export function createChatSocket(accessToken: string): Socket {
-  return io(API_BASE, {
+  const { url, path } = getSocketConfig();
+
+  return io(url, {
+    path,
     auth: {
       token: accessToken,
     },
