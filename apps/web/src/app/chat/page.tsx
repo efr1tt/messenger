@@ -61,15 +61,25 @@ const queryKeys = {
 };
 
 const AVATAR_OPTIONS = [
-  { key: 'none', label: 'Sky', src: '/avatars/avatar-1.svg' },
-  { key: 'orbit', label: 'Orbit', src: '/avatars/avatar-2.svg' },
-  { key: 'ember', label: 'Ember', src: '/avatars/avatar-3.svg' },
-  { key: 'mint', label: 'Mint', src: '/avatars/avatar-4.svg' },
-  { key: 'neon', label: 'Neon', src: '/avatars/avatar-5.svg' },
-  { key: 'sunset', label: 'Sunset', src: '/avatars/avatar-6.svg' },
-  { key: 'citrus', label: 'Citrus', src: '/avatars/avatar-7.svg' },
-  { key: 'midnight', label: 'Midnight', src: '/avatars/avatar-8.svg' },
-  { key: 'coral', label: 'Coral', src: '/avatars/avatar-9.svg' },
+  { key: 'none', label: 'Chip', src: '/avatars/016fb52016e61f6ae5baa0fbf777b46f.jpg' },
+  { key: 'orbit', label: 'Chipette', src: '/avatars/0210f77d48359836d35cec27f9974d1f.jpg' },
+  { key: 'ember', label: 'Sloth', src: '/avatars/164e8621b78c66250fe81be44b84afd7.jpg' },
+  { key: 'mint', label: 'Belle', src: '/avatars/2fe7be344ddf3243c36071501519048a.jpg' },
+  { key: 'neon', label: 'Domovenok', src: '/avatars/424982ffedadcd3dfac2b4a1a4f97d6f.jpg' },
+  { key: 'sunset', label: 'Po', src: '/avatars/48b621220ac6335bf341c17a3408d523.jpg' },
+  { key: 'citrus', label: 'Mushu', src: '/avatars/8593eea5ae06f3ce374105e845c67b3b.jpg' },
+  { key: 'midnight', label: 'Puss', src: '/avatars/8c12a3898d44e648aca14adae68b2a51.jpg' },
+  { key: 'coral', label: 'Hamster', src: '/avatars/8d5fffab7ebc42e2a038498fa8dd900d.jpg' },
+  { key: 'nova', label: 'Fox', src: '/avatars/8fdbb0f61b8dd601532312b727c8df58.jpg' },
+  { key: 'pearl', label: 'Star', src: '/avatars/96fc704ad837859b93d9d6ddba057f29.jpg' },
+  { key: 'blaze', label: 'Sonic', src: '/avatars/9e56747cb0db7af0c24b9730def811e1.jpg' },
+  { key: 'daisy', label: 'Stitch', src: '/avatars/9e6984fdd5797ce4aada9aebf7edc5ec.jpg' },
+  { key: 'sage', label: 'Bugs', src: '/avatars/a322a6e2b02484ec89e2d23302f8a198.jpg' },
+  { key: 'frost', label: 'Judy', src: '/avatars/c4be01391b7d4d4006c4a67c2e99b8eb.jpg' },
+  { key: 'onyx', label: 'Master', src: '/avatars/cad1a65c54e760113dd8309fea47434a.jpg' },
+  { key: 'ruby', label: 'Snow', src: '/avatars/daf3183ec77798e275f5e12cce984221.jpg' },
+  { key: 'luxe', label: 'Queen', src: '/avatars/f2fc095d15ace8950cc02bcad82e7e5c.jpg' },
+  { key: 'gold', label: 'Sponge', src: '/avatars/fd2fe0166a7c2124a999a726e990d7f9.jpg' },
 ] as const;
 
 const LEGACY_AVATAR_MAP: Record<string, (typeof AVATAR_OPTIONS)[number]['key']> = {

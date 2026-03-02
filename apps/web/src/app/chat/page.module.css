@@ -116,7 +116,8 @@
   border: 1px solid #d0d5dd;
   background: #fff;
   border-radius: 8px;
-  height: 56px;
+  aspect-ratio: 1 / 1;
+  min-height: 72px;
   cursor: pointer;
   display: grid;
   place-items: center;
@@ -506,6 +507,7 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center 28%;
   display: block;
 }
 
