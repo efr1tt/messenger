@@ -367,16 +367,27 @@
 .mobileChatTop {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.mobileChatTopMain {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .mobileBackBtn {
-  border: 1px solid #c9d3ea;
-  background: #fff;
-  color: #101828;
-  border-radius: 10px;
-  padding: 8px 10px;
-  font-size: 13px;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: #0f172b;
+  border-radius: 999px;
   cursor: pointer;
 }
 
@@ -385,10 +396,49 @@
   cursor: default;
 }
 
+.mobileBackIcon {
+  width: 22px;
+  height: 22px;
+  fill: currentColor;
+}
+
 .mobileChatTitle {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 17px;
+  font-weight: 700;
   color: #0f172b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mobileHeaderActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.mobileHeaderIconBtn {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #0f172b;
+  cursor: pointer;
+  transition: background 120ms ease, transform 120ms ease;
+}
+
+.mobileHeaderIconBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.mobileHeaderIconBtn:not(:disabled):hover {
+  transform: translateY(-1px);
+  background: rgba(15, 23, 43, 0.06);
 }
 
 .chatHeader {
@@ -958,8 +1008,9 @@
   .chat {
     min-height: 100dvh;
     height: 100dvh;
-    padding: 12px;
+    padding: 0;
     grid-template-rows: auto minmax(0, 1fr) auto auto;
+    gap: 0;
   }
 
   .mobileCallMain {
@@ -967,17 +1018,47 @@
     grid-template-rows: minmax(0, 1fr) auto;
   }
 
+  .mobileChatTop {
+    min-height: calc(64px + env(safe-area-inset-top));
+    padding: calc(env(safe-area-inset-top) + 8px) 12px 8px;
+    border-bottom: 1px solid #d8dfef;
+    background: rgba(255, 255, 255, 0.96);
+    backdrop-filter: blur(14px);
+  }
+
+  .chatHeader {
+    display: none;
+  }
+
   .messages {
-    min-height: 45dvh;
+    min-height: 0;
+    border: 0;
+    border-radius: 0;
+    padding: 12px;
   }
 
   .sendForm {
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: 1fr auto;
     gap: 6px;
+    padding: 10px 12px calc(env(safe-area-inset-bottom) + 10px);
+    border-top: 1px solid #d8dfef;
+    background: rgba(255, 255, 255, 0.98);
+    backdrop-filter: blur(14px);
   }
 
   .iconCallBtn {
     width: 40px;
     height: 40px;
+  }
+
+  .messageInput {
+    min-height: 44px;
+    border-radius: 999px;
+  }
+
+  .sendForm button {
+    min-height: 44px;
+    border-radius: 999px;
+    padding-inline: 16px;
   }
 }

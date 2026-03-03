@@ -2019,17 +2019,54 @@ export default function ChatPage() {
       >
         {isMobileLayout && mobileView !== 'call' ? (
           <div className={styles.mobileChatTop}>
-            <button
-              type="button"
-              className={styles.mobileBackBtn}
-              onClick={onMobileBack}
-              disabled={callState !== 'idle'}
-            >
-              Back
-            </button>
-            <p className={styles.mobileChatTitle}>
-              {activePeer ? getUserLabel(activePeer) : 'Select a conversation'}
-            </p>
+            <div className={styles.mobileChatTopMain}>
+              <button
+                type="button"
+                className={styles.mobileBackBtn}
+                onClick={onMobileBack}
+                disabled={callState !== 'idle'}
+                aria-label="Back to chats"
+              >
+                <svg className={styles.mobileBackIcon} viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M15.7 5.3a1 1 0 0 1 0 1.4L10.41 12l5.29 5.3a1 1 0 1 1-1.41 1.4l-6-6a1 1 0 0 1 0-1.4l6-6a1 1 0 0 1 1.41 0z" />
+                </svg>
+              </button>
+              <p className={styles.mobileChatTitle}>
+                {activePeer ? getUserLabel(activePeer) : 'Chats'}
+              </p>
+            </div>
+            {selectedConversationId ? (
+              <div className={styles.mobileHeaderActions}>
+                <button
+                  type="button"
+                  className={styles.mobileHeaderIconBtn}
+                  onClick={() => onStartCall('video')}
+                  disabled={
+                    !activeConversation || !activePeer || callState !== 'idle' || !socketConnected
+                  }
+                  title="Start video call"
+                  aria-label="Start video call"
+                >
+                  <svg className={styles.iconGlyph} viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M3 6a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1.6l3.6-2A1 1 0 0 1 21 6.5v11a1 1 0 0 1-1.4.9L16 16.4V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6z" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className={styles.mobileHeaderIconBtn}
+                  onClick={() => onStartCall('audio')}
+                  disabled={
+                    !activeConversation || !activePeer || callState !== 'idle' || !socketConnected
+                  }
+                  title="Start audio call"
+                  aria-label="Start audio call"
+                >
+                  <svg className={styles.iconGlyph} viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1-.24 11.4 11.4 0 0 0 3.59.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1C10.85 21 3 13.15 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.24.2 2.46.57 3.59a1 1 0 0 1-.25 1l-2.2 2.2z" />
+                  </svg>
+                </button>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -2064,34 +2101,36 @@ export default function ChatPage() {
             </div>
 
             <form className={styles.sendForm} onSubmit={onSendMessage}>
-              <div className={styles.composeActions}>
-                <button
-                  type="button"
-                  className={styles.iconCallBtn}
-                  onClick={() => onStartCall('audio')}
-                  disabled={
-                    !activeConversation || !activePeer || callState !== 'idle' || !socketConnected
-                  }
-                  title="Start audio call"
-                >
-                  <svg className={styles.iconGlyph} viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1-.24 11.4 11.4 0 0 0 3.59.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1C10.85 21 3 13.15 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.24.2 2.46.57 3.59a1 1 0 0 1-.25 1l-2.2 2.2z" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  className={styles.iconCallBtn}
-                  onClick={() => onStartCall('video')}
-                  disabled={
-                    !activeConversation || !activePeer || callState !== 'idle' || !socketConnected
-                  }
-                  title="Start video call"
-                >
-                  <svg className={styles.iconGlyph} viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M3 6a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1.6l3.6-2A1 1 0 0 1 21 6.5v11a1 1 0 0 1-1.4.9L16 16.4V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6z" />
-                  </svg>
-                </button>
-              </div>
+              {!isMobileLayout ? (
+                <div className={styles.composeActions}>
+                  <button
+                    type="button"
+                    className={styles.iconCallBtn}
+                    onClick={() => onStartCall('audio')}
+                    disabled={
+                      !activeConversation || !activePeer || callState !== 'idle' || !socketConnected
+                    }
+                    title="Start audio call"
+                  >
+                    <svg className={styles.iconGlyph} viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1-.24 11.4 11.4 0 0 0 3.59.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1C10.85 21 3 13.15 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.24.2 2.46.57 3.59a1 1 0 0 1-.25 1l-2.2 2.2z" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.iconCallBtn}
+                    onClick={() => onStartCall('video')}
+                    disabled={
+                      !activeConversation || !activePeer || callState !== 'idle' || !socketConnected
+                    }
+                    title="Start video call"
+                  >
+                    <svg className={styles.iconGlyph} viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M3 6a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1.6l3.6-2A1 1 0 0 1 21 6.5v11a1 1 0 0 1-1.4.9L16 16.4V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6z" />
+                    </svg>
+                  </button>
+                </div>
+              ) : null}
               <input
                 ref={messageInputRef}
                 className={styles.messageInput}
