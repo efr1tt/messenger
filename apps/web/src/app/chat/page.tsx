@@ -242,6 +242,8 @@ export default function ChatPage() {
   const [avatarPickerOpen, setAvatarPickerOpen] = useState(false)
   const [editingDisplayName, setEditingDisplayName] = useState(false)
   const [displayNameDraft, setDisplayNameDraft] = useState("")
+  const [isSelfHandleVisible, setIsSelfHandleVisible] = useState(false)
+  const [isPeerHandleVisible, setIsPeerHandleVisible] = useState(false)
   const [isMobileLayout, setIsMobileLayout] = useState(false)
   const [mobileView, setMobileView] = useState<MobileView>("contacts")
   const [isMobileCallOverlayVisible, setIsMobileCallOverlayVisible] =
@@ -357,6 +359,10 @@ export default function ChatPage() {
 
   useEffect(() => {
     selectedConversationRef.current = selectedConversationId
+  }, [selectedConversationId])
+
+  useEffect(() => {
+    setIsPeerHandleVisible(false)
   }, [selectedConversationId])
 
   useEffect(() => {
@@ -1782,6 +1788,14 @@ export default function ChatPage() {
     return user.displayName || user.username || user.email || "Unknown user"
   }
 
+  function getUserHandle(user?: { username?: string | null } | null) {
+    if (!user?.username) {
+      return null
+    }
+
+    return `@${user.username}`
+  }
+
   function getAvatarOption(avatarKey?: string | null) {
     const normalizedKey = avatarKey
       ? (LEGACY_AVATAR_MAP[avatarKey] ?? avatarKey)
@@ -1813,6 +1827,7 @@ export default function ChatPage() {
   function onStartDisplayNameEdit() {
     setEditingDisplayName(true)
     setDisplayNameDraft(currentUser?.displayName || "")
+    setIsSelfHandleVisible(true)
   }
 
   function onSaveDisplayName() {
@@ -2336,13 +2351,48 @@ export default function ChatPage() {
                 >
                   Cancel
                 </button>
+                {getUserHandle(currentUser) ? (
+                  <p className={styles.userHandleStatic}>
+                    Login: {getUserHandle(currentUser)}
+                  </p>
+                ) : null}
               </div>
             ) : (
               <button
-                className={styles.userEmailBtn}
-                onClick={onStartDisplayNameEdit}
+                className={styles.userIdentityBtn}
+                onClick={() => setIsSelfHandleVisible((prev) => !prev)}
+                title="Show your login"
               >
-                {getUserLabel(currentUser || {})}
+                <span className={styles.userIdentityText}>
+                  <span className={styles.userEmailBtn}>
+                    {getUserLabel(currentUser || {})}
+                  </span>
+                  {isSelfHandleVisible && getUserHandle(currentUser) ? (
+                    <span className={styles.userHandleRow}>
+                      <span className={styles.userHandle}>
+                        Login: {getUserHandle(currentUser)}
+                      </span>
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        className={styles.userHandleAction}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          onStartDisplayNameEdit()
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault()
+                            event.stopPropagation()
+                            onStartDisplayNameEdit()
+                          }
+                        }}
+                      >
+                        Изменить имя
+                      </span>
+                    </span>
+                  ) : null}
+                </span>
               </button>
             )}
             {avatarPickerOpen ? (
@@ -2535,9 +2585,25 @@ export default function ChatPage() {
                   <path d="M15.7 5.3a1 1 0 0 1 0 1.4L10.41 12l5.29 5.3a1 1 0 1 1-1.41 1.4l-6-6a1 1 0 0 1 0-1.4l6-6a1 1 0 0 1 1.41 0z" />
                 </svg>
               </button>
-              <p className={styles.mobileChatTitle}>
-                {activePeer ? getUserLabel(activePeer) : "Chats"}
-              </p>
+              {activePeer ? (
+                <button
+                  type="button"
+                  className={styles.mobileChatIdentityBtn}
+                  onClick={() => setIsPeerHandleVisible((prev) => !prev)}
+                  title="Show contact login"
+                >
+                  <span className={styles.mobileChatTitle}>
+                    {getUserLabel(activePeer)}
+                  </span>
+                  {isPeerHandleVisible && getUserHandle(activePeer) ? (
+                    <span className={styles.mobileChatHandle}>
+                      {getUserHandle(activePeer)}
+                    </span>
+                  ) : null}
+                </button>
+              ) : (
+                <p className={styles.mobileChatTitle}>Chats</p>
+              )}
             </div>
             {selectedConversationId ? (
               <div className={styles.mobileHeaderActions}>
@@ -2593,6 +2659,25 @@ export default function ChatPage() {
         ) : (
           <>
             <div className={styles.chatHeader}>
+              {activePeer && callState === "idle" ? (
+                <div className={styles.chatHeaderTop}>
+                  <button
+                    type="button"
+                    className={styles.chatIdentityBtn}
+                    onClick={() => setIsPeerHandleVisible((prev) => !prev)}
+                    title="Show contact login"
+                  >
+                    <span className={styles.chatIdentityName}>
+                      {getUserLabel(activePeer)}
+                    </span>
+                    {isPeerHandleVisible && getUserHandle(activePeer) ? (
+                      <span className={styles.chatIdentityHandle}>
+                        Login: {getUserHandle(activePeer)}
+                      </span>
+                    ) : null}
+                  </button>
+                </div>
+              ) : null}
               {callState !== "idle" ? renderCallPanel() : null}
             </div>
 
