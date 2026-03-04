@@ -22,7 +22,9 @@ export default function Home() {
   const [successEmail, setSuccessEmail] = useState<string | null>(null)
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false)
   const [forgotMessage, setForgotMessage] = useState<string | null>(null)
-  const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null)
+  const [temporaryPassword, setTemporaryPassword] = useState<string | null>(
+    null
+  )
 
   useEffect(() => {
     const token = getAccessToken()
@@ -32,7 +34,7 @@ export default function Home() {
   }, [router])
 
   const submitLabel = useMemo(
-    () => (mode === "register" ? "Create Account" : "Sign In"),
+    () => (mode === "register" ? "Создать аккаунт" : "Войти в аккаунт"),
     [mode]
   )
   const isRecoveryMode = mode === "login" && forgotPasswordOpen
@@ -108,11 +110,13 @@ export default function Home() {
         <section className={styles.panel}>
           <div className={styles.heading}>
             <p className={styles.badge}>SweetyCall</p>
-            <h2>{mode === "register" ? "Create account" : "Welcome back"}</h2>
+            <h2>
+              {mode === "register" ? "Создать аккаунт" : "С возвращением"}
+            </h2>
             <p className={styles.subtitleSmall}>
               {mode === "register"
-                ? "Create your account and continue to chat."
-                : "Sign in to open your conversations."}
+                ? "На связи с близкими..."
+                : "Войдите, чтобы созвониться..."}
             </p>
           </div>
 
@@ -129,7 +133,7 @@ export default function Home() {
                 setTemporaryPassword(null)
               }}
             >
-              Register
+              Зарегистрироваться
             </button>
             <button
               type="button"
@@ -142,7 +146,7 @@ export default function Home() {
                 setTemporaryPassword(null)
               }}
             >
-              Login
+              Войти
             </button>
           </div>
 
@@ -151,7 +155,7 @@ export default function Home() {
               {mode === "register" ? (
                 <>
                   <label className={styles.label}>
-                    Username
+                    Логин
                     <input
                       className={styles.input}
                       type="text"
@@ -165,7 +169,7 @@ export default function Home() {
                     />
                   </label>
                   <label className={styles.label}>
-                    Name
+                    Имя
                     <input
                       className={styles.input}
                       type="text"
@@ -181,7 +185,7 @@ export default function Home() {
               ) : null}
 
               <label className={styles.label}>
-                Email
+                Почта
                 <input
                   className={styles.input}
                   type="email"
@@ -193,11 +197,11 @@ export default function Home() {
               </label>
 
               <label className={styles.label}>
-                Password
+                Пароль
                 <input
                   className={styles.input}
                   type="password"
-                  placeholder="Minimum 8 chars"
+                  placeholder="Минимум 8 знаков"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   minLength={8}
@@ -217,12 +221,16 @@ export default function Home() {
                       setTemporaryPassword(null)
                     }}
                   >
-                    Forgot password?
+                    Забыли пароль?
                   </button>
                 </div>
               ) : null}
 
-              <button className={styles.submit} type="submit" disabled={loading}>
+              <button
+                className={styles.submit}
+                type="submit"
+                disabled={loading}
+              >
                 {loading ? "Please wait..." : submitLabel}
               </button>
             </form>
@@ -230,10 +238,8 @@ export default function Home() {
             <form className={styles.recoveryCard} onSubmit={onForgotPassword}>
               <div className={styles.recoveryHeader}>
                 <div>
-                  <h3>Recover password</h3>
-                  <p className={styles.hint}>
-                    Enter your email and we will send a temporary password.
-                  </p>
+                  <h3>Восстановление пароля</h3>
+                  <p className={styles.hint}>Введите адрес электронной почты</p>
                 </div>
                 <button
                   type="button"
@@ -245,11 +251,11 @@ export default function Home() {
                     setTemporaryPassword(null)
                   }}
                 >
-                  Back to login
+                  Вернуться ко входу в аккаунт
                 </button>
               </div>
               <label className={styles.label}>
-                Email
+                Почта
                 <input
                   className={styles.input}
                   type="email"
@@ -259,8 +265,12 @@ export default function Home() {
                   required
                 />
               </label>
-              <button className={styles.secondarySubmit} type="submit" disabled={forgotLoading}>
-                {forgotLoading ? "Sending..." : "Send temporary password"}
+              <button
+                className={styles.secondarySubmit}
+                type="submit"
+                disabled={forgotLoading}
+              >
+                {forgotLoading ? "Sending..." : "Отправить пароль на почту"}
               </button>
             </form>
           )}
