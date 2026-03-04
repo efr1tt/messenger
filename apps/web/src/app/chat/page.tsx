@@ -199,6 +199,8 @@ export default function ChatPage() {
   const router = useRouter()
   const queryClient = useQueryClient()
   const messageInputRef = useRef<HTMLInputElement | null>(null)
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null)
+  const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const selectedConversationRef = useRef<string | null>(null)
   const socketRef = useRef<Socket | null>(null)
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
@@ -331,6 +333,8 @@ export default function ChatPage() {
     enabled: mounted && hasToken === true && Boolean(selectedConversationId),
   })
 
+  const messageCount = messagesQuery.data?.items.length || 0
+
   const searchQuery = useQuery({
     queryKey: queryKeys.userSearch(searchTerm),
     queryFn: () => searchUsers(searchTerm),
@@ -354,6 +358,19 @@ export default function ChatPage() {
   useEffect(() => {
     selectedConversationRef.current = selectedConversationId
   }, [selectedConversationId])
+
+  useEffect(() => {
+    if (!selectedConversationId || !messagesContainerRef.current) {
+      return
+    }
+
+    requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "end",
+      })
+    })
+  }, [selectedConversationId, messageCount])
 
   useEffect(() => {
     if (meQuery.isError && hasToken === true) {
@@ -2579,7 +2596,7 @@ export default function ChatPage() {
               {callState !== "idle" ? renderCallPanel() : null}
             </div>
 
-            <div className={styles.messages}>
+            <div ref={messagesContainerRef} className={styles.messages}>
               {!selectedConversationId ? (
                 <p className={styles.empty}>Select a conversation</p>
               ) : null}
@@ -2607,6 +2624,7 @@ export default function ChatPage() {
               {selectedConversationId && !messagesQuery.data?.items.length ? (
                 <p className={styles.empty}>No messages yet</p>
               ) : null}
+              <div ref={messagesEndRef} className={styles.messagesEndAnchor} />
             </div>
 
             <form className={styles.sendForm} onSubmit={onSendMessage}>
