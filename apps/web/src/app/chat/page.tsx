@@ -750,6 +750,30 @@ export default function ChatPage() {
     )
   }, [activeConversation, currentUser])
 
+  const directConversationByFriendId = useMemo(() => {
+    if (!conversationsQuery.data || !currentUser) {
+      return new Map<string, ConversationItem>()
+    }
+
+    const map = new Map<string, ConversationItem>()
+
+    conversationsQuery.data.forEach((conversation) => {
+      if (!conversation.isDirect) {
+        return
+      }
+
+      const peer = conversation.members.find(
+        (member) => member.id !== currentUser.id
+      )
+
+      if (peer) {
+        map.set(peer.id, conversation)
+      }
+    })
+
+    return map
+  }, [conversationsQuery.data, currentUser])
+
   const callPeerLabel = useMemo(() => {
     const peerId = callPeerUserId || incomingCall?.fromUserId || activePeer?.id
     if (!peerId) {
@@ -2398,38 +2422,69 @@ export default function ChatPage() {
               <p className={styles.statusError}>Failed to load friends</p>
             ) : null}
             {friendsQuery.data?.map((item) => (
-              <div
-                key={item.id}
-                className={`${styles.listItem} ${styles.friendListItem} ${
-                  activePeer?.id === item.friend.id
-                    ? styles.friendListItemActive
-                    : ""
-                }`}
-              >
-                <div className={styles.friendTopRow}>
-                  <button
-                    className={styles.friendMainBtn}
-                    onClick={() => onOpenDirect(item.friend.id)}
-                    title="Open chat"
+              (() => {
+                const friendConversation = directConversationByFriendId.get(
+                  item.friend.id
+                )
+                const unreadCount = friendConversation?.unreadCount || 0
+                const lastMessage = friendConversation?.lastMessage
+                const messagePreview = lastMessage
+                  ? lastMessage.text
+                  : item.isOnline
+                    ? "Online"
+                    : "Offline"
+
+                return (
+                  <div
+                    key={item.id}
+                    className={`${styles.listItem} ${styles.friendListItem} ${
+                      activePeer?.id === item.friend.id
+                        ? styles.friendListItemActive
+                        : ""
+                    } ${unreadCount > 0 ? styles.friendListItemUnread : ""}`}
                   >
-                    <span className={styles.friendAvatarWrap}>
-                      <span className={styles.avatarBubble}>
-                        {renderAvatar(item.friend.avatarKey, "User avatar")}
-                      </span>
-                      <span
-                        className={
-                          item.isOnline
-                            ? styles.presenceDotOnline
-                            : styles.presenceDotOffline
-                        }
-                      />
-                    </span>
-                    <span className={styles.friendName}>
-                      {getUserLabel(item.friend)}
-                    </span>
-                  </button>
-                </div>
-              </div>
+                    <div className={styles.friendTopRow}>
+                      <button
+                        className={styles.friendMainBtn}
+                        onClick={() => onOpenDirect(item.friend.id)}
+                        title="Open chat"
+                      >
+                        <span className={styles.friendAvatarWrap}>
+                          <span className={styles.avatarBubble}>
+                            {renderAvatar(item.friend.avatarKey, "User avatar")}
+                          </span>
+                          <span
+                            className={
+                              item.isOnline
+                                ? styles.presenceDotOnline
+                                : styles.presenceDotOffline
+                            }
+                          />
+                        </span>
+                        <span className={styles.friendMeta}>
+                          <span className={styles.friendNameRow}>
+                            <span className={styles.friendName}>
+                              {getUserLabel(item.friend)}
+                            </span>
+                            {unreadCount > 0 ? (
+                              <span className={styles.friendUnreadBadge}>
+                                {unreadCount > 99 ? "99+" : unreadCount}
+                              </span>
+                            ) : null}
+                          </span>
+                          <span
+                            className={`${styles.friendPreview} ${
+                              unreadCount > 0 ? styles.friendPreviewUnread : ""
+                            }`}
+                          >
+                            {messagePreview}
+                          </span>
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                )
+              })()
             ))}
             {!friendsQuery.data?.length ? (
               <p className={styles.empty}>No friends yet</p>

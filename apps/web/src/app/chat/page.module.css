@@ -214,6 +214,11 @@
   border-color: #c6d4ee;
 }
 
+.friendListItemUnread {
+  border-color: #b8caef;
+  box-shadow: inset 0 0 0 1px rgba(25, 61, 125, 0.05);
+}
+
 .friendTopRow {
   display: block;
 }
@@ -239,6 +244,20 @@
   background: transparent;
 }
 
+.friendMeta {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  flex: 1;
+}
+
+.friendNameRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .userLine {
   display: inline-flex;
   align-items: center;
@@ -258,10 +277,41 @@
 }
 
 .friendName {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.friendPreview {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.3;
+  font-weight: 500;
+  color: #667085;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.friendPreviewUnread {
+  color: #193d7d;
+}
+
+.friendUnreadBadge {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  background: #193d7d;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
 }
 
 .friendAvatarWrap {
