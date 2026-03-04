@@ -787,7 +787,6 @@ export default function ChatPage() {
     const shouldAutoHide =
       isMobileLayout &&
       mobileView === 'call' &&
-      callMediaType === 'video' &&
       callState === 'in_call';
 
     if (!shouldAutoHide) {
@@ -902,18 +901,13 @@ export default function ChatPage() {
   function revealMobileCallOverlay() {
     setIsMobileCallOverlayVisible(true);
 
-    if (
-      isMobileLayout &&
-      mobileView === 'call' &&
-      callMediaType === 'video' &&
-      callState === 'in_call'
-    ) {
+    if (isMobileLayout && mobileView === 'call' && callState === 'in_call') {
       scheduleMobileCallOverlayHide();
     }
   }
 
   function onMobileCallSurfaceTap() {
-    if (!(isMobileLayout && mobileView === 'call' && callMediaType === 'video')) {
+    if (!(isMobileLayout && mobileView === 'call')) {
       return;
     }
 
@@ -1639,7 +1633,8 @@ export default function ChatPage() {
 
   function renderCallPanel(isMobileCallView = false) {
     const isMobileVideoCall = isMobileCallView && callMediaType === 'video';
-    const showMobileOverlay = !isMobileVideoCall || isMobileCallOverlayVisible;
+    const isMobileAudioCall = isMobileCallView && !isMobileVideoCall;
+    const showMobileOverlay = !isMobileCallView || isMobileCallOverlayVisible;
 
     return (
       <div
@@ -1749,6 +1744,87 @@ export default function ChatPage() {
               ) : (
                 <div className={styles.mobileLocalPlaceholder} />
               )}
+            </div>
+          </div>
+        ) : isMobileAudioCall ? (
+          <div className={styles.mobileAudioStage} onClick={onMobileCallSurfaceTap}>
+            <div className={styles.mobileAudioBackdrop} />
+            <div className={styles.mobileAudioCenter}>
+              <span className={styles.mobileAudioAvatar}>
+                <img className={styles.avatarImage} src={callPeerAvatarSrc} alt="Call avatar" />
+              </span>
+              <div className={styles.mobileAudioMeta}>
+                <p className={styles.mobileAudioTitle}>{callPeerLabel}</p>
+                <p className={styles.mobileAudioState}>{getCallStatusLabel()}</p>
+              </div>
+            </div>
+
+            <div
+              className={`${styles.mobileCallOverlay} ${
+                showMobileOverlay ? styles.mobileCallOverlayVisible : styles.mobileCallOverlayHidden
+              }`}
+            >
+              <div className={styles.mobileCallOverlayTop}>
+                <div className={styles.callTopBar}>
+                  <div className={styles.callInfo}>
+                    <span className={styles.callAvatar}>
+                      <img className={styles.avatarImage} src={callPeerAvatarSrc} alt="Call avatar" />
+                    </span>
+                    <div className={styles.callTextGroup}>
+                      <p className={styles.callTitle}>{callPeerLabel}</p>
+                      <p className={styles.callState}>{getCallStatusLabel()}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                className={styles.mobileCallOverlayBottom}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className={styles.mobileCallActions}>
+                  <button
+                    className={`${styles.callBtn} ${styles.callIconBtn}`}
+                    onClick={onToggleMute}
+                    title={isMuted ? 'Unmute microphone' : 'Mute microphone'}
+                    aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
+                  >
+                    <svg className={styles.callGlyph} viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-4a3.5 3.5 0 1 0-7 0v4A3.5 3.5 0 0 0 12 15Zm6-3.5a1 1 0 1 0-2 0 4 4 0 1 1-8 0 1 1 0 1 0-2 0 6 6 0 0 0 5 5.92V20H9.5a1 1 0 1 0 0 2h5a1 1 0 1 0 0-2H13v-2.58A6 6 0 0 0 18 11.5Z" />
+                      {isMuted ? (
+                        <path d="M4.7 3.3a1 1 0 0 0-1.4 1.4l16 16a1 1 0 1 0 1.4-1.4l-16-16Z" />
+                      ) : null}
+                    </svg>
+                  </button>
+                  <button
+                    className={`${styles.callBtn} ${styles.callIconBtn}`}
+                    onClick={onToggleCamera}
+                    title={isCameraEnabled ? 'Turn camera off' : 'Turn camera on'}
+                    aria-label={isCameraEnabled ? 'Turn camera off' : 'Turn camera on'}
+                  >
+                    <svg className={styles.callGlyph} viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M4 7a3 3 0 0 1 3-3h7a3 3 0 0 1 3 3v1.38l2.55-1.67A1 1 0 0 1 21 7.55v8.9a1 1 0 0 1-1.45.84L17 15.62V17a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7Z" />
+                      {!isCameraEnabled ? (
+                        <path d="M4.7 3.3a1 1 0 0 0-1.4 1.4l16 16a1 1 0 1 0 1.4-1.4l-16-16Z" />
+                      ) : null}
+                    </svg>
+                  </button>
+                  <button
+                    className={`${styles.callBtn} ${styles.callIconBtn}`}
+                    onClick={onSwitchCameraFacing}
+                    disabled={!isCameraEnabled}
+                    title="Switch front/back camera"
+                    aria-label="Switch front/back camera"
+                  >
+                    <svg className={styles.callGlyph} viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M7.8 7H16a4 4 0 0 1 3.6 2.2l.15.3 1.36-.7-.3 4.17-3.78-1.8 1.34-.68-.1-.18A2.5 2.5 0 0 0 16 8.5H7.8l1.1 1.1a1 1 0 1 1-1.4 1.4l-2.8-2.8 2.8-2.8a1 1 0 1 1 1.4 1.4L7.8 7Zm8.7 8.5-1.4-1.4a1 1 0 1 1 1.4-1.4l2.8 2.8-2.8 2.8a1 1 0 1 1-1.4-1.4l1.1-1.1H8a4 4 0 0 1-3.6-2.2l-.15-.3-1.36.7.3-4.17 3.78 1.8-1.34.68.1.18A2.5 2.5 0 0 0 8 15.5h8.5Z" />
+                    </svg>
+                  </button>
+                  <button className={styles.callEndBtn} onClick={onEndCall} aria-label="End call">
+                    End
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         ) : (

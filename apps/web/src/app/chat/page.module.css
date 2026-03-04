@@ -642,6 +642,63 @@
   overflow: hidden;
 }
 
+.mobileAudioStage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 100dvh;
+  overflow: hidden;
+  background: linear-gradient(180deg, #0b1220 0%, #070b14 100%);
+}
+
+.mobileAudioBackdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 20% 18%, rgba(59, 130, 246, 0.2), transparent 26%),
+    radial-gradient(circle at 82% 22%, rgba(16, 185, 129, 0.18), transparent 24%),
+    radial-gradient(circle at 50% 82%, rgba(148, 163, 184, 0.14), transparent 28%);
+}
+
+.mobileAudioCenter {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 18px;
+  padding: 24px;
+  z-index: 1;
+}
+
+.mobileAudioAvatar {
+  width: clamp(108px, 34vw, 152px);
+  height: clamp(108px, 34vw, 152px);
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 24px 54px rgba(0, 0, 0, 0.34);
+}
+
+.mobileAudioMeta {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  text-align: center;
+}
+
+.mobileAudioTitle {
+  font-size: clamp(28px, 8vw, 38px);
+  line-height: 1.02;
+  font-weight: 700;
+  color: #fff;
+}
+
+.mobileAudioState {
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.76);
+}
+
 .mobileRemoteVideo,
 .mobileRemotePlaceholder {
   width: 100%;
@@ -776,6 +833,34 @@
 
 .mobileCallPanelVideo .callEndBtn {
   background: linear-gradient(180deg, #f04438 0%, #d92d20 100%);
+}
+
+.mobileCallPanel .callBtn {
+  background: rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(18px);
+}
+
+.mobileCallPanel .callEndBtn {
+  min-width: 68px;
+  padding-inline: 20px;
+  background: linear-gradient(180deg, #f04438 0%, #d92d20 100%);
+}
+
+.mobileCallPanel .callAvatar {
+  width: 42px;
+  height: 42px;
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: none;
+}
+
+.mobileCallPanel .callTitle {
+  color: #fff;
+  font-size: 26px;
+}
+
+.mobileCallPanel .callState {
+  color: rgba(255, 255, 255, 0.76);
 }
 
 .conversationsRow {
