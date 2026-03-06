@@ -2495,11 +2495,6 @@ export default function ChatPage() {
                 )
                 const unreadCount = friendConversation?.unreadCount || 0
                 const lastMessage = friendConversation?.lastMessage
-                const messagePreview = lastMessage
-                  ? lastMessage.text
-                  : item.isOnline
-                    ? "Online"
-                    : "Offline"
 
                 return (
                   <div
@@ -2539,13 +2534,15 @@ export default function ChatPage() {
                               </span>
                             ) : null}
                           </span>
-                          <span
-                            className={`${styles.friendPreview} ${
-                              unreadCount > 0 ? styles.friendPreviewUnread : ""
-                            }`}
-                          >
-                            {messagePreview}
-                          </span>
+                          {lastMessage ? (
+                            <span
+                              className={`${styles.friendPreview} ${
+                                unreadCount > 0 ? styles.friendPreviewUnread : ""
+                              }`}
+                            >
+                              {lastMessage.text}
+                            </span>
+                          ) : null}
                         </span>
                       </button>
                     </div>
