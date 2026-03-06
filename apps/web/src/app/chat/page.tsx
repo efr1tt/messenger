@@ -1313,22 +1313,83 @@ export default function ChatPage() {
     }
   }
 
-  async function createVideoTrack(facingMode: "user" | "environment") {
+  async function tryCreateTrack(constraints: MediaTrackConstraints | boolean) {
     try {
       const videoStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: facingMode } },
+        video: constraints,
         audio: false,
       })
       const [videoTrack] = videoStream.getVideoTracks()
       return videoTrack || null
     } catch {
-      const fallbackStream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: false,
-      })
-      const [videoTrack] = fallbackStream.getVideoTracks()
-      return videoTrack || null
+      return null
     }
+  }
+
+  async function createVideoTrack(
+    facingMode: "user" | "environment",
+    options?: {
+      currentDeviceId?: string
+      allowGenericFallback?: boolean
+    }
+  ) {
+    const currentDeviceId = options?.currentDeviceId
+    const allowGenericFallback = options?.allowGenericFallback ?? true
+
+    const exactTrack = await tryCreateTrack({ facingMode: { exact: facingMode } })
+    if (exactTrack) {
+      return exactTrack
+    }
+
+    const idealTrack = await tryCreateTrack({ facingMode: { ideal: facingMode } })
+    if (idealTrack) {
+      return idealTrack
+    }
+
+    try {
+      const videoInputs = (await navigator.mediaDevices.enumerateDevices()).filter(
+        (device) => device.kind === "videoinput"
+      )
+
+      const lowerById = new Map(
+        videoInputs.map((device) => [device.deviceId, device.label.toLowerCase()])
+      )
+
+      const isBackLabel = (label: string) =>
+        /(back|rear|environment|traseira|trasera|arriere|hinten)/i.test(label)
+      const isFrontLabel = (label: string) =>
+        /(front|user|facetime|selfie|frontal|vorderseite)/i.test(label)
+
+      const preferredDevice = videoInputs.find((device) => {
+        const label = lowerById.get(device.deviceId) || ""
+        if (currentDeviceId && device.deviceId === currentDeviceId) {
+          return false
+        }
+        return facingMode === "environment" ? isBackLabel(label) : isFrontLabel(label)
+      })
+
+      const alternateDevice = videoInputs.find(
+        (device) => !currentDeviceId || device.deviceId !== currentDeviceId
+      )
+
+      const deviceCandidate = preferredDevice || alternateDevice
+      if (deviceCandidate?.deviceId) {
+        const byDeviceTrack = await tryCreateTrack({
+          deviceId: { exact: deviceCandidate.deviceId },
+        })
+        if (byDeviceTrack) {
+          return byDeviceTrack
+        }
+      }
+    } catch {
+      // enumerateDevices may fail on some mobile browsers; continue to fallback below
+    }
+
+    if (!allowGenericFallback) {
+      return null
+    }
+
+    return tryCreateTrack(true)
   }
 
   async function ensureLocalStream(
@@ -1728,8 +1789,14 @@ export default function ChatPage() {
         return
       }
 
-      const nextTrack = await createVideoTrack(nextFacingMode)
+      const currentTrack = stream.getVideoTracks()[0]
+      const currentDeviceId = currentTrack?.getSettings().deviceId
+      const nextTrack = await createVideoTrack(nextFacingMode, {
+        currentDeviceId,
+        allowGenericFallback: false,
+      })
       if (!nextTrack) {
+        setChatError("Couldn't switch camera on this device")
         return
       }
 
