@@ -1034,7 +1034,7 @@ export default function ChatPage() {
   if (!mounted || hasToken === null || meQuery.isLoading) {
     return (
       <div className={styles.center}>
-        <p>Loading chat...</p>
+        <div className={styles.loaderSpinner} role="status" aria-label="Loading chat" />
       </div>
     )
   }
