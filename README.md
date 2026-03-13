@@ -81,7 +81,9 @@ docker compose exec nginx nginx -t
 
 ### Auth (Mobile)
 
-![Auth mobile](docs/screenshots/auth-mobile.jpg)
+<p align="center">
+  <img src="docs/screenshots/auth-mobile.jpg" width="350"/>
+</p>
 
 ### Chat (Desktop)
 
@@ -89,8 +91,12 @@ docker compose exec nginx nginx -t
 
 ### Chat (Mobile)
 
-![Chat mobile](docs/screenshots/chat-mobile.jpg)
+<p align="center">
+  <img src="docs/screenshots/chat-mobile.jpg" width="350"/>
+</p>
 
 ### Incoming Video Call (Mobile)
 
-![Incoming call mobile](docs/screenshots/incoming-call-mobile.jpg)
+<p align="center">
+  <img src="docs/screenshots/incoming-call-mobile.jpg" width="350"/>
+</p>
